@@ -95,7 +95,7 @@ import { createSnakeGame, type SnakeGame } from './game';
       gap: 1rem;
     }
     h2 { margin: 0; font-size: 1.1rem; }
-    h2.pixel { letter-spacing: 0.06em; }
+    h2.pixel { letter-spacing: 0.06em; color: var(--nyx-brand-hi); }
     a { color: inherit; text-decoration: none; opacity: 0.8; }
     a:hover { opacity: 1; }
     .scores {

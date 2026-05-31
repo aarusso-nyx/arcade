@@ -256,7 +256,7 @@ const TOAST_DURATION_MS = 2000;
       align-items: center;
       gap: 0.75rem;
     }
-    h2 { margin: 0; text-align: center; font-size: 1rem; letter-spacing: 0.06em; }
+    h2 { margin: 0; text-align: center; font-size: 1rem; letter-spacing: 0.06em; color: var(--nyx-brand-hi); }
     a.back { color: inherit; text-decoration: none; opacity: 0.8; font-size: 0.9rem; }
     a.back:hover { opacity: 1; }
     .mode-toggle {

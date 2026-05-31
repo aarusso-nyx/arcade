@@ -6,7 +6,15 @@
   --nyx-border: #2a2f38;
   --nyx-fg: #e6e6e6;
   --nyx-fg-dim: #8a8f99;
-  --nyx-accent: #ffd24a; /* Pac-Man yellow */
+  /* NYX brand palette, sampled from the logo. The deep tone is the colour
+     of the logo strokes against the dark background; bright is a tuned-up
+     version for accents that need to pop. */
+  --nyx-brand-deep: #0F4E62;
+  --nyx-brand: #1F7AA8;
+  --nyx-brand-hi: #4EB0D9;
+  /* Pac-Man yellow — retained for live in-game HUD numbers so they pop
+     against the brand palette. */
+  --nyx-accent: #ffd24a;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 

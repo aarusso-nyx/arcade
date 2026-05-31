@@ -13,10 +13,15 @@ const GAMES = [
   imports: [RouterLink],
   template: `
     <main class="home">
-      <h1 class="pixel">NYX Arcade</h1>
-      <p class="tagline">
-        Four classic games as a worked example of AI-agentic coding.
-      </p>
+      <header class="hero">
+        <img src="nyx-logo.png" alt="NYX" class="logo" width="96" height="96">
+        <div>
+          <h1 class="pixel">NYX Arcade</h1>
+          <p class="tagline">
+            Four classic games as a worked example of AI-agentic coding.
+          </p>
+        </div>
+      </header>
       <ul>
         @for (game of games; track game.slug) {
           <li>
@@ -36,21 +41,32 @@ const GAMES = [
     .home {
       padding: 3rem 2rem 4rem;
       font-family: system-ui, sans-serif;
-      color: #e6e6e6;
+      color: var(--nyx-fg);
       max-width: 480px;
       margin: 0 auto;
     }
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    .logo {
+      flex: 0 0 auto;
+      border-radius: 0.75rem;
+      box-shadow: 0 0 0 1px var(--nyx-border);
+    }
     h1 {
-      margin: 0 0 0.5rem;
+      margin: 0 0 0.4rem;
       font-size: 1.6rem;
-      color: #ffd24a;
+      color: var(--nyx-brand-hi);
       letter-spacing: 0.08em;
     }
     .tagline {
-      margin: 0 0 2rem;
-      color: #8a8f99;
-      font-size: 0.9rem;
-      line-height: 1.5;
+      margin: 0;
+      color: var(--nyx-fg-dim);
+      font-size: 0.88rem;
+      line-height: 1.4;
     }
     ul { list-style: none; padding: 0; display: grid; gap: 0.6rem; }
     li { display: flex; gap: 0.5rem; }
@@ -58,10 +74,10 @@ const GAMES = [
       color: inherit;
       text-decoration: none;
       padding: 0.9rem 1rem;
-      border: 1px solid #3a3f4b;
+      border: 1px solid var(--nyx-border);
       border-radius: 0.5rem;
       display: block;
-      transition: background 120ms, border-color 120ms;
+      transition: background 120ms, border-color 120ms, color 120ms;
     }
     .play {
       flex: 1;
@@ -76,11 +92,12 @@ const GAMES = [
       opacity: 0.6;
     }
     a:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: #ffd24a;
+      background: rgba(31, 122, 168, 0.08);
+      border-color: var(--nyx-brand);
+      color: var(--nyx-brand-hi);
       opacity: 1;
     }
-    :host { display: block; min-height: 100vh; background: #14171c; }
+    :host { display: block; min-height: 100vh; background: var(--nyx-bg); }
   `,
 })
 export class HomeComponent {

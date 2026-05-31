@@ -66,7 +66,7 @@ import {
       padding: 1rem 1.25rem;
       border-bottom: 1px solid #2a2f38;
     }
-    header h3 { margin: 0; font-size: 1.15rem; }
+    header h3 { margin: 0; font-size: 1.15rem; color: var(--nyx-brand-hi); }
     .close {
       background: transparent;
       color: inherit;
