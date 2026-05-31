@@ -1,5 +1,6 @@
 import {
   createInitialState,
+  DEFAULT_WORD_LENGTH,
   reduce,
   replayKeyStates,
   type Action,
@@ -8,7 +9,7 @@ import {
   type GameState,
   type ValidGuessSource,
 } from './state';
-import { dailyPuzzleNumber, dailySolution } from './daily';
+import { dailyPuzzleNumber } from './daily';
 import { evaluateGuess } from './evaluator';
 import {
   createTermoStorage,
@@ -23,21 +24,35 @@ export interface TermoGame {
   dispatch(action: Action): Effect[];
   /**
    * Switch into the given mode. Daily mode rehydrates today's progress (or
-   * starts fresh); infinite mode picks a new random solution every time.
-   * Returns the resulting effects (typically empty).
+   * starts fresh) at the daily-fixed 5-letter length; infinite mode picks
+   * a new random solution every time at the current infinite word length.
    */
   setMode(mode: GameMode): void;
-  newInfinite(): void;
+  /**
+   * Start a new infinite (training) game at the given word length. If
+   * already in infinite mode this resets the board to a fresh random word
+   * of the requested length; the daily mode is unaffected.
+   */
+  newInfinite(wordLength?: number): void;
+  /** The word length the next infinite game will use (5, 6, or 7). */
+  infiniteLength(): number;
   shareString(): string | null;
   countdownMs(): number;
 }
 
 export interface TermoOptions {
-  lists: WordLists;
+  /**
+   * Word lists keyed by length. Must include length 5 (used by daily mode).
+   * Lengths the game can switch to in infinite mode are exactly the keys
+   * present here.
+   */
+  lists: Record<number, WordLists> | WordLists;
   storage?: TermoStorage;
   now?: () => Date;
   rng?: () => number;
   initialMode?: GameMode;
+  /** Initial infinite word length. Defaults to 5. */
+  initialInfiniteLength?: number;
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -58,20 +73,57 @@ function pickRandomSolution(
   };
 }
 
+function normalizeListsArg(
+  arg: Record<number, WordLists> | WordLists,
+): Record<number, WordLists> {
+  // Treat a bare WordLists as { [its length]: lists } for back-compat.
+  if ((arg as WordLists).solutions !== undefined) {
+    const wl = arg as WordLists;
+    return { [wl.wordLength]: wl };
+  }
+  return arg as Record<number, WordLists>;
+}
+
 export function createTermoGame(opts: TermoOptions): TermoGame {
-  const { lists } = opts;
+  const listsByLength = normalizeListsArg(opts.lists);
+  const dailyLists = listsByLength[DEFAULT_WORD_LENGTH];
+  if (!dailyLists) {
+    throw new Error(
+      `createTermoGame: missing word lists for daily length (${DEFAULT_WORD_LENGTH})`,
+    );
+  }
+  for (const [k, lists] of Object.entries(listsByLength)) {
+    if (lists.solutions.length === 0) {
+      throw new Error(`createTermoGame: solutions list for length ${k} is empty`);
+    }
+  }
+
   const storage = opts.storage ?? createTermoStorage();
   const now = opts.now ?? ((): Date => new Date());
   const rng = opts.rng ?? Math.random;
-  const validGuesses: ValidGuessSource = lists.validGuesses;
 
-  if (lists.solutions.length === 0) {
-    throw new Error('createTermoGame: solutions list is empty');
+  let infiniteLength: number =
+    opts.initialInfiniteLength ?? DEFAULT_WORD_LENGTH;
+  if (!listsByLength[infiniteLength]) {
+    infiniteLength = DEFAULT_WORD_LENGTH;
   }
 
   let state: GameState = createDailyState();
 
+  function listsFor(length: number): WordLists {
+    const ls = listsByLength[length];
+    if (!ls) {
+      throw new Error(`createTermoGame: no word lists loaded for length ${length}`);
+    }
+    return ls;
+  }
+
+  function validGuessesFor(length: number): ValidGuessSource {
+    return listsFor(length).validGuesses;
+  }
+
   function createDailyState(): GameState {
+    const lists = dailyLists;
     const puzzleNumber = dailyPuzzleNumber(now());
     const idx = (puzzleNumber - 1) % lists.solutions.length;
     const solution = lists.solutions[idx];
@@ -82,6 +134,7 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
       solution,
       solutionAccented: accented,
       puzzleNumber,
+      wordLength: DEFAULT_WORD_LENGTH,
     });
 
     const stored = storage.readDaily();
@@ -101,13 +154,15 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     return fresh;
   }
 
-  function createInfiniteState(): GameState {
+  function createInfiniteState(length: number = infiniteLength): GameState {
+    const lists = listsFor(length);
     const { solution, accented } = pickRandomSolution(lists, rng);
     return createInitialState({
       mode: 'infinite',
       solution,
       solutionAccented: accented,
       puzzleNumber: null,
+      wordLength: length,
     });
   }
 
@@ -142,7 +197,7 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
 
   function applyEndOfGameForInfinite(): void {
     if (state.mode !== 'infinite' || state.status === 'playing') return;
-    const cur = storage.readInfinite();
+    const cur = storage.readInfinite(state.wordLength);
     let currentStreak: number;
     if (state.status === 'won') {
       currentStreak = cur.currentStreak + 1;
@@ -150,7 +205,7 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
       currentStreak = 0;
     }
     const bestStreak = Math.max(cur.bestStreak, currentStreak);
-    storage.writeInfinite({ bestStreak, currentStreak });
+    storage.writeInfinite(state.wordLength, { bestStreak, currentStreak });
   }
 
   function handleEffects(effects: Effect[]): void {
@@ -176,7 +231,7 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     },
 
     dispatch(action: Action): Effect[] {
-      const result = reduce(state, action, validGuesses);
+      const result = reduce(state, action, validGuessesFor(state.wordLength));
       state = result.state;
       handleEffects(result.effects);
       return result.effects;
@@ -188,12 +243,24 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
         state = createDailyState();
         if (state.status !== 'playing') applyEndOfGameForDaily();
       } else {
-        state = createInfiniteState();
+        state = createInfiniteState(infiniteLength);
       }
     },
 
-    newInfinite(): void {
-      state = createInfiniteState();
+    newInfinite(wordLength?: number): void {
+      if (wordLength !== undefined) {
+        if (!listsByLength[wordLength]) {
+          throw new Error(
+            `newInfinite: no word lists loaded for length ${wordLength}`,
+          );
+        }
+        infiniteLength = wordLength;
+      }
+      state = createInfiniteState(infiniteLength);
+    },
+
+    infiniteLength(): number {
+      return infiniteLength;
     },
 
     shareString(): string | null {
@@ -205,6 +272,7 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
         puzzleNumber: state.puzzleNumber,
         guessCount: state.guesses.length,
         evaluations: state.evaluations,
+        maxAttempts: state.maxAttempts,
       });
     },
 

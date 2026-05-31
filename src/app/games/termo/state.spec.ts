@@ -192,6 +192,74 @@ describe('reduce', () => {
   });
 });
 
+describe('reduce with variable wordLength', () => {
+  it('createInitialState picks wordLength + maxAttempts from solution', () => {
+    const s5 = createInitialState({ mode: 'infinite', solution: 'ABATE' });
+    expect(s5.wordLength).toBe(5);
+    expect(s5.maxAttempts).toBe(6);
+
+    const s6 = createInitialState({ mode: 'infinite', solution: 'BANANA' });
+    expect(s6.wordLength).toBe(6);
+    expect(s6.maxAttempts).toBe(7);
+
+    const s7 = createInitialState({ mode: 'infinite', solution: 'ABACATE' });
+    expect(s7.wordLength).toBe(7);
+    expect(s7.maxAttempts).toBe(8);
+  });
+
+  it('SUBMIT accepts a 6-letter guess and advances the row', () => {
+    const s0 = createInitialState({ mode: 'infinite', solution: 'BANANA' });
+    const s1 = { ...s0, currentInput: 'CARROS' };
+    const { state } = reduce(s1, { type: 'SUBMIT' }, dict('BANANA', 'CARROS'));
+    expect(state.guesses).toEqual(['CARROS']);
+    expect(state.currentRow).toBe(1);
+    expect(state.evaluations[0]).toHaveSize(6);
+    expect(state.status).toBe('playing');
+  });
+
+  it('SUBMIT under 6 letters shakes (does not submit)', () => {
+    const s0 = createInitialState({ mode: 'infinite', solution: 'BANANA' });
+    const s1 = { ...s0, currentInput: 'BANAN' }; // only 5
+    const { state, effects } = reduce(s1, { type: 'SUBMIT' }, dict('BANANA'));
+    expect(state.currentRow).toBe(0);
+    expect(state.guesses).toEqual([]);
+    expect(effects.some((e) => e.type === 'SHAKE_ROW')).toBeTrue();
+  });
+
+  it('TYPE_LETTER caps at wordLength (6)', () => {
+    let s: GameState = createInitialState({ mode: 'infinite', solution: 'BANANA' });
+    for (const ch of 'ABCDEFG') {
+      s = reduce(s, { type: 'TYPE_LETTER', letter: ch }, dict()).state;
+    }
+    expect(s.currentInput).toBe('ABCDEF');
+  });
+
+  it('lost on (wordLength + 1)th wrong guess for 6-letter game', () => {
+    let s: GameState = createInitialState({ mode: 'infinite', solution: 'BANANA' });
+    const words = ['CARROS', 'BOLOTA', 'DIVIDA', 'PEDIDO', 'JOGADO', 'LEITES', 'TROCAR'];
+    const d = dict('BANANA', ...words);
+    for (const g of words) {
+      for (const ch of g) {
+        s = reduce(s, { type: 'TYPE_LETTER', letter: ch }, d).state;
+      }
+      s = reduce(s, { type: 'SUBMIT' }, d).state;
+    }
+    expect(s.status).toBe('lost');
+    expect(s.guesses.length).toBe(7);
+  });
+
+  it('accepts a 7-letter guess and produces a 7-tile evaluation row', () => {
+    const s0 = createInitialState({ mode: 'infinite', solution: 'ABACATE' });
+    const s1 = { ...s0, currentInput: 'ABACATE' };
+    const { state } = reduce(s1, { type: 'SUBMIT' }, dict('ABACATE'));
+    expect(state.status).toBe('won');
+    expect(state.wordLength).toBe(7);
+    expect(state.maxAttempts).toBe(8);
+    expect(state.evaluations[0]).toHaveSize(7);
+    expect(state.evaluations[0].every((e) => e === 'correct')).toBeTrue();
+  });
+});
+
 describe('replayKeyStates', () => {
   it('rebuilds key colors from submitted guesses', () => {
     const ks = replayKeyStates(

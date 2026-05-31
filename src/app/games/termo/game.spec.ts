@@ -11,21 +11,36 @@ function makeLists(): WordLists {
   const solutions = ['ABATE', 'BANCO', 'MUNDO', 'TROCA', 'PISCO'];
   const valid = new Set([...solutions, 'ZZZZA']);
   return {
+    wordLength: 5,
     solutions,
     solutionsAccented: solutions.slice(),
     validGuesses: valid,
   };
 }
 
-function makeStorage(): { storage: TermoStorage; data: {
-  daily: StoredDaily | null;
-  meta: StoredDailyMeta | null;
-  infinite: StoredInfinite | null;
-} } {
+function makeLists6(): WordLists {
+  const solutions = ['ABACTO', 'ABAFAR', 'BANANA', 'CARROS'];
+  const valid = new Set([...solutions]);
+  return {
+    wordLength: 6,
+    solutions,
+    solutionsAccented: solutions.slice(),
+    validGuesses: valid,
+  };
+}
+
+function makeStorage(): {
+  storage: TermoStorage;
+  data: {
+    daily: StoredDaily | null;
+    meta: StoredDailyMeta | null;
+    infinite: Record<number, StoredInfinite | null>;
+  };
+} {
   const data = {
     daily: null as StoredDaily | null,
     meta: null as StoredDailyMeta | null,
-    infinite: null as StoredInfinite | null,
+    infinite: {} as Record<number, StoredInfinite | null>,
   };
   const storage: TermoStorage = {
     readDaily: () => data.daily,
@@ -46,10 +61,10 @@ function makeStorage(): { storage: TermoStorage; data: {
     writeDailyMeta: (m) => {
       data.meta = { v: 1, ...m };
     },
-    readInfinite: () =>
-      data.infinite ?? { v: 1, bestStreak: 0, currentStreak: 0 },
-    writeInfinite: (i) => {
-      data.infinite = { v: 1, ...i };
+    readInfinite: (len) =>
+      data.infinite[len] ?? { v: 1, bestStreak: 0, currentStreak: 0 },
+    writeInfinite: (len, i) => {
+      data.infinite[len] = { v: 1, ...i };
     },
   };
   return { storage, data };
@@ -71,6 +86,8 @@ describe('createTermoGame', () => {
     expect(s.mode).toBe('daily');
     expect(s.puzzleNumber).toBe(1);
     expect(s.solution).toBe(lists.solutions[0]);
+    expect(s.wordLength).toBe(5);
+    expect(s.maxAttempts).toBe(6);
   });
 
   it('rehydrates a saved daily game', () => {
@@ -214,5 +231,83 @@ describe('createTermoGame', () => {
     const ms = game.countdownMs();
     expect(ms).toBeGreaterThan(0);
     expect(ms).toBeLessThanOrEqual(86_400_000);
+  });
+
+  describe('variable word length (infinite mode)', () => {
+    it('switches to a 6-letter infinite game with 7 attempts', () => {
+      const lists5 = makeLists();
+      const lists6 = makeLists6();
+      const { storage } = makeStorage();
+      const game = createTermoGame({
+        lists: { 5: lists5, 6: lists6 },
+        storage,
+        now: () => FIXED_NOW,
+        rng: () => 0,
+      });
+      game.setMode('infinite');
+      game.newInfinite(6);
+      const s = game.state();
+      expect(s.mode).toBe('infinite');
+      expect(s.wordLength).toBe(6);
+      expect(s.maxAttempts).toBe(7);
+      expect(lists6.solutions).toContain(s.solution);
+    });
+
+    it('persists infinite streak per length independently', () => {
+      const lists5 = makeLists();
+      const lists6 = makeLists6();
+      const { storage, data } = makeStorage();
+      const game = createTermoGame({
+        lists: { 5: lists5, 6: lists6 },
+        storage,
+        now: () => FIXED_NOW,
+        rng: () => 0,
+      });
+      // Win one 5-letter infinite game.
+      game.setMode('infinite');
+      // Solution is ABATE (rng=0 -> idx 0).
+      for (const ch of 'ABATE') game.dispatch({ type: 'TYPE_LETTER', letter: ch });
+      game.dispatch({ type: 'SUBMIT' });
+      expect(data.infinite[5]?.currentStreak).toBe(1);
+      expect(data.infinite[6]).toBeUndefined();
+
+      // Switch to 6-letter — should NOT touch the 5-letter streak.
+      game.newInfinite(6);
+      // Solution at rng=0 -> idx 0 -> ABACTO.
+      for (const ch of 'ABACTO') game.dispatch({ type: 'TYPE_LETTER', letter: ch });
+      game.dispatch({ type: 'SUBMIT' });
+      expect(data.infinite[6]?.currentStreak).toBe(1);
+      expect(data.infinite[5]?.currentStreak).toBe(1); // unchanged
+    });
+
+    it('daily mode stays 5-letter even when 6-letter lists are loaded', () => {
+      const lists5 = makeLists();
+      const lists6 = makeLists6();
+      const { storage } = makeStorage();
+      const game = createTermoGame({
+        lists: { 5: lists5, 6: lists6 },
+        storage,
+        now: () => FIXED_NOW,
+        rng: () => 0,
+      });
+      expect(game.state().wordLength).toBe(5);
+      expect(game.state().maxAttempts).toBe(6);
+    });
+
+    it('share string denominator reflects daily maxAttempts (6)', () => {
+      const lists5 = makeLists();
+      const lists6 = makeLists6();
+      const { storage } = makeStorage();
+      const game = createTermoGame({
+        lists: { 5: lists5, 6: lists6 },
+        storage,
+        now: () => FIXED_NOW,
+        rng: () => 0,
+      });
+      for (const ch of 'ABATE') game.dispatch({ type: 'TYPE_LETTER', letter: ch });
+      game.dispatch({ type: 'SUBMIT' });
+      const s = game.shareString();
+      expect(s!.startsWith('Termo 1 1/6')).toBeTrue();
+    });
   });
 });

@@ -9,7 +9,13 @@ import {
 import { RouterLink } from '@angular/router';
 import { createTermoGame, type TermoGame } from './game';
 import { normalize } from './normalize';
-import { loadWordLists, type WordLists } from './wordlist';
+import {
+  loadWordLists,
+  SUPPORTED_LENGTHS,
+  type WordLength,
+  type WordLists,
+} from './wordlist';
+import { infiniteStorageKey } from './persistence';
 import type { Effect, GameMode, GameState, KeyState } from './state';
 
 interface TileView {
@@ -73,10 +79,26 @@ const TOAST_DURATION_MS = 2000;
       } @else if (!ready()) {
         <div class="loading">Carregando palavras…</div>
       } @else {
+        @if (mode() === 'infinite') {
+          <div class="length-toggle" role="radiogroup" aria-label="Tamanho da palavra">
+            @for (n of supportedLengths; track n) {
+              <button
+                type="button"
+                role="radio"
+                [attr.aria-checked]="wordLength() === n"
+                [class.active]="wordLength() === n"
+                (click)="setLength(n)"
+              >{{ n }} letras</button>
+            }
+          </div>
+        }
         <div
           class="board"
           role="grid"
-          [attr.aria-label]="'Tabuleiro Termo, 6 tentativas de 5 letras'"
+          [attr.aria-label]="boardAriaLabel()"
+          [style.--cols]="wordLength()"
+          [style.--rows]="maxAttempts()"
+          [style.aspect-ratio]="wordLength() + ' / ' + maxAttempts()"
         >
           @for (row of boardRows(); track $index; let r = $index) {
             <div
@@ -115,7 +137,7 @@ const TOAST_DURATION_MS = 2000;
         @if (status() !== 'playing') {
           <div class="result" role="status">
             @if (status() === 'won') {
-              <p>Você acertou em {{ guessCount() }}/6!</p>
+              <p>Você acertou em {{ guessCount() }}/{{ maxAttempts() }}!</p>
             } @else {
               <p>A palavra era: <strong>{{ solutionAccented() }}</strong></p>
             }
@@ -208,15 +230,38 @@ const TOAST_DURATION_MS = 2000;
     }
     .mode-toggle button.active { background: #3a3f4b; opacity: 1; }
 
+    .length-toggle {
+      display: inline-flex;
+      gap: 0;
+      background: #23262d;
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+    .length-toggle button {
+      background: transparent;
+      color: inherit;
+      border: 0;
+      padding: 0.4rem 0.7rem;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      opacity: 0.7;
+    }
+    .length-toggle button.active { background: #3a3f4b; opacity: 1; }
+
     .board {
       display: grid;
-      grid-template-rows: repeat(6, 1fr);
+      grid-template-rows: repeat(var(--rows, 6), 1fr);
       gap: 6px;
       width: 100%;
       max-width: 330px;
-      aspect-ratio: 5 / 6;
+      /* aspect-ratio is set inline based on wordLength / maxAttempts. */
     }
-    .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(var(--cols, 5), 1fr);
+      gap: 6px;
+    }
     .row.shaking { animation: shake 400ms ease-in-out; }
 
     .tile {
@@ -374,6 +419,8 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   protected readonly revealedRow = signal<number | null>(null);
   protected readonly bouncingRow = signal<number | null>(null);
 
+  protected readonly supportedLengths = SUPPORTED_LENGTHS;
+
   protected readonly mode = computed<GameMode>(() => {
     this.stateVersion();
     return this.game?.state().mode ?? 'daily';
@@ -394,6 +441,19 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.stateVersion();
     return this.game?.state().solutionAccented ?? '';
   });
+  protected readonly wordLength = computed(() => {
+    this.stateVersion();
+    return this.game?.state().wordLength ?? 5;
+  });
+  protected readonly maxAttempts = computed(() => {
+    this.stateVersion();
+    return this.game?.state().maxAttempts ?? 6;
+  });
+  protected readonly boardAriaLabel = computed(() => {
+    const len = this.wordLength();
+    const rows = this.maxAttempts();
+    return `Tabuleiro Termo, ${rows} tentativas de ${len} letras`;
+  });
   protected readonly infiniteStreak = signal(0);
   protected readonly shareString = computed<string | null>(() => {
     this.stateVersion();
@@ -405,7 +465,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.revealingRow();
     this.revealedRow();
     this.bouncingRow();
-    if (!this.game) return Array.from({ length: 6 }, () => emptyRow());
+    if (!this.game) return Array.from({ length: 6 }, () => emptyRow(5));
     return buildBoardRows(
       this.game.state(),
       this.revealingRow(),
@@ -480,6 +540,30 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.bump();
   }
 
+  protected setLength(len: WordLength): void {
+    if (!this.game) return;
+    // Switch to infinite mode if not already there; resets the board to a
+    // fresh random word of the chosen length.
+    if (this.game.state().mode !== 'infinite') {
+      this.game.setMode('infinite');
+    }
+    if (this.game.state().wordLength === len && this.game.state().guesses.length === 0
+        && this.game.state().status === 'playing') {
+      // Already on this length with a fresh board — no-op.
+      this.bump();
+      return;
+    }
+    this.clearTimers();
+    this.shakingRow.set(null);
+    this.revealingRow.set(null);
+    this.revealedRow.set(null);
+    this.bouncingRow.set(null);
+    this.toast.set(null);
+    this.game.newInfinite(len);
+    this.refreshInfiniteStreakDisplay();
+    this.bump();
+  }
+
   protected share(): void {
     const s = this.game?.shareString();
     if (!s) return;
@@ -524,15 +608,19 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   // ---------- internal ----------
 
   private async init(): Promise<void> {
-    let lists: WordLists;
+    let listsByLength: Record<number, WordLists>;
     try {
-      lists = await loadWordLists();
+      const loaded = await Promise.all(
+        SUPPORTED_LENGTHS.map((n) => loadWordLists(n)),
+      );
+      listsByLength = {};
+      for (const l of loaded) listsByLength[l.wordLength] = l;
     } catch (err) {
       this.loadError.set('Erro ao carregar palavras. Tente recarregar.');
       return;
     }
     try {
-      this.game = createTermoGame({ lists });
+      this.game = createTermoGame({ lists: listsByLength });
     } catch (err) {
       this.loadError.set('Erro ao iniciar o jogo.');
       return;
@@ -628,8 +716,11 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
 
   private refreshInfiniteStreakDisplay(): void {
     // Read fresh from storage so the displayed streak matches persisted value.
+    // Streaks are namespaced per word length (infinite, infinite.6, infinite.7).
+    const len = this.game?.state().wordLength ?? 5;
+    const key = `arcade.termo.${infiniteStorageKey(len)}`;
     try {
-      const raw = localStorage.getItem('arcade.termo.infinite');
+      const raw = localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as { currentStreak?: number };
         this.infiniteStreak.set(parsed.currentStreak ?? 0);
@@ -664,8 +755,8 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   }
 }
 
-function emptyRow(): TileView[] {
-  return Array.from({ length: 5 }, () => ({
+function emptyRow(len: number): TileView[] {
+  return Array.from({ length: len }, () => ({
     letter: '',
     state: 'empty' as const,
     eval: '' as const,
@@ -682,9 +773,11 @@ function buildBoardRows(
   bouncingRow: number | null,
 ): TileView[][] {
   const rows: TileView[][] = [];
-  for (let r = 0; r < 6; r++) {
+  const totalRows = state.maxAttempts;
+  const cols = state.wordLength;
+  for (let r = 0; r < totalRows; r++) {
     const row: TileView[] = [];
-    for (let c = 0; c < 5; c++) {
+    for (let c = 0; c < cols; c++) {
       // Submitted row.
       if (r < state.guesses.length) {
         const letter = state.guesses[r][c];

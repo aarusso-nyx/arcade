@@ -6,7 +6,11 @@ export type GameMode = 'daily' | 'infinite';
 
 export interface GameState {
   mode: GameMode;
-  solution: string; // normalized, length 5
+  /** Word length for this game (5, 6, or 7). */
+  wordLength: number;
+  /** Max guesses for this game; equals `wordLength + 1`. */
+  maxAttempts: number;
+  solution: string; // normalized, length === wordLength
   solutionAccented: string; // for end-of-game reveal display
   puzzleNumber: number | null; // daily only
 
@@ -37,9 +41,17 @@ export interface ReduceResult {
   effects: Effect[];
 }
 
-export const MAX_ROWS = 6;
-export const WORD_LENGTH = 5;
+/**
+ * Daily-mode default. Daily puzzles are 5-letter only by convention; only
+ * infinite/training mode supports the variable-length selector.
+ */
+export const DEFAULT_WORD_LENGTH = 5;
 export const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+/** Max attempts for a game with the given word length: N + 1. */
+export function maxAttemptsFor(wordLength: number): number {
+  return wordLength + 1;
+}
 
 export interface ValidGuessSource {
   has(word: string): boolean;
@@ -67,11 +79,16 @@ export interface InitOptions {
   solution: string;
   solutionAccented?: string;
   puzzleNumber?: number | null;
+  /** Defaults to the length of `solution`. */
+  wordLength?: number;
 }
 
 export function createInitialState(opts: InitOptions): GameState {
+  const wordLength = opts.wordLength ?? opts.solution.length;
   return {
     mode: opts.mode,
+    wordLength,
+    maxAttempts: maxAttemptsFor(wordLength),
     solution: opts.solution,
     solutionAccented: opts.solutionAccented ?? opts.solution,
     puzzleNumber: opts.puzzleNumber ?? null,
@@ -119,7 +136,7 @@ export function reduce(
   switch (action.type) {
     case 'TYPE_LETTER': {
       if (!isLetter(action.letter)) return { state, effects: [] };
-      if (state.currentInput.length >= WORD_LENGTH) return { state, effects: [] };
+      if (state.currentInput.length >= state.wordLength) return { state, effects: [] };
       return {
         state: { ...state, currentInput: state.currentInput + action.letter },
         effects: [],
@@ -138,7 +155,7 @@ export function reduce(
     }
 
     case 'SUBMIT': {
-      if (state.currentInput.length < WORD_LENGTH) {
+      if (state.currentInput.length < state.wordLength) {
         return {
           state,
           effects: [
@@ -165,13 +182,13 @@ export function reduce(
 
       // Update keyboard color states.
       const newKeyStates = { ...state.keyStates };
-      for (let c = 0; c < WORD_LENGTH; c++) {
+      for (let c = 0; c < state.wordLength; c++) {
         const ch = guess[c];
         newKeyStates[ch] = bumpKeyState(newKeyStates[ch], evaluation[c]);
       }
 
       const isWin = evaluation.every((e) => e === 'correct');
-      const isLoss = !isWin && newRow >= MAX_ROWS;
+      const isLoss = !isWin && newRow >= state.maxAttempts;
       const newStatus: GameStatus = isWin ? 'won' : isLoss ? 'lost' : 'playing';
 
       const effects: Effect[] = [

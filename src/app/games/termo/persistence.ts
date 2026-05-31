@@ -40,8 +40,14 @@ export interface TermoStorage {
   clearDaily(): void;
   readDailyMeta(): StoredDailyMeta;
   writeDailyMeta(meta: Omit<StoredDailyMeta, 'v'>): void;
-  readInfinite(): StoredInfinite;
-  writeInfinite(data: Omit<StoredInfinite, 'v'>): void;
+  /**
+   * Read infinite-mode streak for the given word length. Each length has
+   * its own namespaced key (e.g. `streak.infinite.5`, `streak.infinite.6`)
+   * so a player's 6-letter streak doesn't reset when they play a 5-letter
+   * game.
+   */
+  readInfinite(wordLength: number): StoredInfinite;
+  writeInfinite(wordLength: number, data: Omit<StoredInfinite, 'v'>): void;
 }
 
 function isValidDaily(x: unknown): x is StoredDaily {
@@ -91,6 +97,16 @@ const DEFAULT_INFINITE: StoredInfinite = {
   currentStreak: 0,
 };
 
+/**
+ * Storage key for the per-length infinite streak. Uses a stable scheme so
+ * existing keys remain meaningful. For 5-letter we keep the legacy key
+ * `infinite` to preserve any pre-existing streaks; for new lengths we use
+ * `infinite.{N}`.
+ */
+export function infiniteStorageKey(wordLength: number): string {
+  return wordLength === 5 ? 'infinite' : `infinite.${wordLength}`;
+}
+
 export function createTermoStorage(
   storage: NamespacedStorage = createStorage(STORAGE_NS),
 ): TermoStorage {
@@ -119,13 +135,13 @@ export function createTermoStorage(
     writeDailyMeta(meta): void {
       storage.set('dailyMeta', { v: SCHEMA_VERSION, ...meta });
     },
-    readInfinite(): StoredInfinite {
-      const raw = storage.get<unknown>('infinite', null);
+    readInfinite(wordLength): StoredInfinite {
+      const raw = storage.get<unknown>(infiniteStorageKey(wordLength), null);
       if (!isValidInfinite(raw)) return { ...DEFAULT_INFINITE };
       return raw;
     },
-    writeInfinite(data): void {
-      storage.set('infinite', { v: SCHEMA_VERSION, ...data });
+    writeInfinite(wordLength, data): void {
+      storage.set(infiniteStorageKey(wordLength), { v: SCHEMA_VERSION, ...data });
     },
   };
 }

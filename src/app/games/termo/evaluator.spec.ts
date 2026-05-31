@@ -111,4 +111,64 @@ describe('evaluateGuess', () => {
     expect(() => evaluateGuess('ABC', 'ABCDE')).toThrow();
     expect(() => evaluateGuess('ABCDE', 'ABCDEF')).toThrow();
   });
+
+  it('throws on zero length', () => {
+    expect(() => evaluateGuess('', '')).toThrow();
+  });
+
+  describe('variable length', () => {
+    it('6-letter: BANANA vs ANANAS — duplicate-letter handling', () => {
+      // Solution BANANA: B,A,N,A,N,A.  Guess ANANAS: A,N,A,N,A,S.
+      // Pass 1 (greens): none of the positions match.
+      //   remaining = {B:1, A:3, N:2}.
+      // Pass 2 (left to right):
+      //   pos0 A: pool A=3 -> present, A=2
+      //   pos1 N: pool N=2 -> present, N=1
+      //   pos2 A: pool A=2 -> present, A=1
+      //   pos3 N: pool N=1 -> present, N=0
+      //   pos4 A: pool A=1 -> present, A=0
+      //   pos5 S: pool S=0 -> absent
+      expect(evaluateGuess('ANANAS', 'BANANA')).toEqual([
+        'present', 'present', 'present', 'present', 'present', 'absent',
+      ]);
+    });
+
+    it('6-letter: all-green when guess equals solution', () => {
+      expect(evaluateGuess('BANANA', 'BANANA')).toEqual([
+        'correct', 'correct', 'correct', 'correct', 'correct', 'correct',
+      ]);
+    });
+
+    it('6-letter: duplicate guess letter against single in solution', () => {
+      // Solution CARROS (one C, one A, two Rs, one O, one S).
+      // Guess CCCCCC: pos0 C==C green. remaining {A:1,R:2,O:1,S:1}.
+      // Pass 2: positions 1-5 all C, pool C=0 -> absent.
+      expect(evaluateGuess('CCCCCC', 'CARROS')).toEqual([
+        'correct', 'absent', 'absent', 'absent', 'absent', 'absent',
+      ]);
+    });
+
+    it('7-letter: ABACATE vs CACTATE — mixed greens/yellows with dupes', () => {
+      // Solution ABACATE: A,B,A,C,A,T,E.  Guess CACTATE: C,A,C,T,A,T,E.
+      // Pass 1 (exact-position):
+      //   pos0 C!=A, pos1 A!=B, pos2 C!=A, pos3 T!=C, pos4 A==A green,
+      //   pos5 T==T green, pos6 E==E green.
+      //   remaining from non-matching solution chars: A(pos0), B(pos1),
+      //   A(pos2), C(pos3) -> {A:2, B:1, C:1}.
+      // Pass 2 (left to right over non-greens):
+      //   pos0 C: pool C=1 -> present, C=0.
+      //   pos1 A: pool A=2 -> present, A=1.
+      //   pos2 C: pool C=0 -> absent.
+      //   pos3 T: pool T=0 -> absent.
+      expect(evaluateGuess('CACTATE', 'ABACATE')).toEqual([
+        'present', 'present', 'absent', 'absent', 'correct', 'correct', 'correct',
+      ]);
+    });
+
+    it('7-letter: all-gray when no overlap', () => {
+      expect(evaluateGuess('BCDFGHJ', 'KLMNPQR')).toEqual([
+        'absent', 'absent', 'absent', 'absent', 'absent', 'absent', 'absent',
+      ]);
+    });
+  });
 });

@@ -11,6 +11,8 @@ export interface ShareInput {
   puzzleNumber: number;
   guessCount: number; // number of submitted guesses
   evaluations: TileEvaluation[][];
+  /** Max attempts for this puzzle (denominator). Defaults to 6. */
+  maxAttempts?: number;
 }
 
 /**
@@ -25,10 +27,11 @@ export interface ShareInput {
  *     🟩🟩🟩🟩🟩
  */
 export function buildShareString(input: ShareInput): string {
+  const denom = input.maxAttempts ?? 6;
   const header =
     input.status === 'won'
-      ? `Termo ${input.puzzleNumber} ${input.guessCount}/6`
-      : `Termo ${input.puzzleNumber} X/6`;
+      ? `Termo ${input.puzzleNumber} ${input.guessCount}/${denom}`
+      : `Termo ${input.puzzleNumber} X/${denom}`;
 
   const grid = input.evaluations
     .map((row) => row.map((e) => EMOJI[e]).join(''))
