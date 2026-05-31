@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "arcade-newer": {
+    "nyx-arcade": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -61,10 +61,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "arcade-newer:build:production"
+              "buildTarget": "nyx-arcade:build:production"
             },
             "development": {
-              "buildTarget": "arcade-newer:build:development"
+              "buildTarget": "nyx-arcade:build:development"
             }
           },
           "defaultConfiguration": "development"

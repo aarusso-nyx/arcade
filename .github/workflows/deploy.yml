@@ -39,12 +39,12 @@ jobs:
         # reach the Angular router instead of dying at the static layer.
         # .nojekyll stops Pages from stripping underscore-prefixed Angular files.
         run: |
-          cp dist/arcade-newer/browser/index.html dist/arcade-newer/browser/404.html
-          touch dist/arcade-newer/browser/.nojekyll
+          cp dist/nyx-arcade/browser/index.html dist/nyx-arcade/browser/404.html
+          touch dist/nyx-arcade/browser/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/arcade-newer/browser
+          path: dist/nyx-arcade/browser
 
   deploy:
     needs: build

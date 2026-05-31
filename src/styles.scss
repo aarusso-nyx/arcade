@@ -1,1 +1,48 @@
-/* You can add global styles to this file, and also import other style files */
+/* Global styles for NYX Arcade. */
+
+:root {
+  --nyx-bg: #14171c;
+  --nyx-bg-elev: #1a1d24;
+  --nyx-border: #2a2f38;
+  --nyx-fg: #e6e6e6;
+  --nyx-fg-dim: #8a8f99;
+  --nyx-accent: #ffd24a; /* Pac-Man yellow */
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--nyx-bg);
+  color: var(--nyx-fg);
+  min-height: 100vh;
+}
+
+/* Pixel-art arcade typography. Apply with `.pixel` or the
+   --nyx-pixel-font CSS variable. */
+.pixel,
+:root {
+  --nyx-pixel-font: 'Press Start 2P', 'Courier New', monospace;
+}
+.pixel {
+  font-family: var(--nyx-pixel-font);
+  letter-spacing: 0.04em;
+}
+
+/* App-wide footer rendered once in app.html. Sits below the router outlet. */
+.app-footer {
+  border-top: 1px solid var(--nyx-border);
+  padding: 1rem 1.25rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--nyx-fg-dim);
+  line-height: 1.5;
+  background: var(--nyx-bg);
+}
+.app-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--nyx-border);
+  text-underline-offset: 2px;
+}
+.app-footer a:hover { color: var(--nyx-fg); }
+.app-footer strong { color: var(--nyx-fg); font-weight: 600; }

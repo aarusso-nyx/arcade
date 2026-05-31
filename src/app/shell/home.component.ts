@@ -13,11 +13,14 @@ const GAMES = [
   imports: [RouterLink],
   template: `
     <main class="home">
-      <h1>Arcade</h1>
+      <h1 class="pixel">NYX Arcade</h1>
+      <p class="tagline">
+        Four classic games as a worked example of AI-agentic coding.
+      </p>
       <ul>
         @for (game of games; track game.slug) {
           <li>
-            <a class="play" [routerLink]="['/', game.slug]">{{ game.name }}</a>
+            <a class="play pixel" [routerLink]="['/', game.slug]">{{ game.name }}</a>
             <a
               class="help"
               [routerLink]="['/', game.slug, 'help']"
@@ -30,19 +33,41 @@ const GAMES = [
     </main>
   `,
   styles: `
-    .home { padding: 2rem; font-family: system-ui, sans-serif; color: #e6e6e6; }
-    h1 { margin: 0 0 1rem; }
-    ul { list-style: none; padding: 0; display: grid; gap: 0.5rem; max-width: 400px; }
+    .home {
+      padding: 3rem 2rem 4rem;
+      font-family: system-ui, sans-serif;
+      color: #e6e6e6;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.6rem;
+      color: #ffd24a;
+      letter-spacing: 0.08em;
+    }
+    .tagline {
+      margin: 0 0 2rem;
+      color: #8a8f99;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    ul { list-style: none; padding: 0; display: grid; gap: 0.6rem; }
     li { display: flex; gap: 0.5rem; }
     a {
       color: inherit;
       text-decoration: none;
-      padding: 0.75rem 1rem;
-      border: 1px solid currentColor;
+      padding: 0.9rem 1rem;
+      border: 1px solid #3a3f4b;
       border-radius: 0.5rem;
       display: block;
+      transition: background 120ms, border-color 120ms;
     }
-    .play { flex: 1; }
+    .play {
+      flex: 1;
+      font-size: 0.95rem;
+      letter-spacing: 0.06em;
+    }
     .help {
       flex: 0 0 auto;
       width: 3rem;
@@ -50,7 +75,11 @@ const GAMES = [
       font-weight: 600;
       opacity: 0.6;
     }
-    a:hover { background: rgba(255,255,255,0.06); opacity: 1; }
+    a:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: #ffd24a;
+      opacity: 1;
+    }
     :host { display: block; min-height: 100vh; background: #14171c; }
   `,
 })
