@@ -342,25 +342,9 @@ Escape -> exitToMenu
 
 Call `directionQueue.enqueue(...)` for direction keys. Call `e.preventDefault()` for the arrow keys so the page doesn't scroll.
 
-### Touch swipe
+### Touch — explicitly out of scope
 
-Attach `touchstart`, `touchmove`, `touchend` listeners on the canvas (or its container).
-
-```
-on touchstart: record startX, startY
-on touchend:
-  dx = endX - startX
-  dy = endY - startY
-  if max(|dx|, |dy|) < 20: ignore  // tap, not swipe
-  if |dx| > |dy|:
-    enqueue(dx > 0 ? EAST : WEST)
-  else:
-    enqueue(dy > 0 ? SOUTH : NORTH)
-```
-
-Mid-gesture `touchmove` can be ignored, or used to detect partial swipes for responsiveness — for v1, end-of-gesture is sufficient.
-
-Apply `touch-action: none` to the canvas element to suppress browser scrolling and double-tap zoom.
+**No touch or pointer input is implemented.** The game is keyboard-only. Do not attach `touchstart`/`touchmove`/`touchend` listeners and do not render an on-screen direction pad. On a touch-only device the player is told a keyboard is required.
 
 ### Input buffering
 
@@ -432,7 +416,7 @@ src/games/snake/
   index.ts              // public API: createGame(canvas, config) -> Game
   game.ts               // Game class: lifecycle (start, pause, resume, stop)
   state.ts              // Board, Snake, mutable state; pure update functions
-  input.ts              // KeyboardInput, TouchInput; direction queue
+  input.ts              // KeyboardInput; direction queue
   food.ts               // food spawner, bonus food lifecycle
   loop.ts               // fixed-timestep loop wrapper
   renderer.ts           // canvas rendering, interpolation, DPR handling
@@ -523,8 +507,8 @@ The following are explicitly deferred:
 - Portals (teleport pairs on the board).
 - Obstacles (static walls inside the play area).
 - Themes (multiple palettes, skins, custom sprites).
-- Audio beyond a basic eat-click and death-tone (deferred unless trivial).
-- Mobile-specific UI chrome beyond a pause button and swipe input.
+- Audio of any kind (deferred to v2 in line with the rest of the arcade).
+- Any form of touch, pointer, or on-screen direction-pad input. Keyboard only.
 - Save / resume across browser sessions (only high score is persisted).
 - Leaderboards or score submission.
 

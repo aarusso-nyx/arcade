@@ -18,12 +18,7 @@ Steer the snake so that its head enters cells containing food. Each food eaten g
 
 A direction input that would reverse the snake 180 degrees (e.g. moving east and pressing west) is ignored. This prevents instant self-collision from a misclick.
 
-### Touch (mobile)
-
-- **Swipe up / down / left / right** anywhere on the play area — turn in the swiped direction.
-- **Tap the pause button** in the HUD — pause / resume.
-
-Swipes are interpreted by dominant axis: if the horizontal distance of the swipe exceeds the vertical distance, the input is horizontal, and vice versa. A minimum swipe distance (around 20px) avoids accidental taps registering as turns.
+The game is keyboard-only. No touch or pointer input.
 
 ### Input buffering
 
@@ -118,7 +113,6 @@ The on-screen display contains:
 - **Score** (top left).
 - **Best score** (top right, smaller).
 - **Speed indicator** (top center or below score) — a simple numeric or bar reading.
-- **Pause button** (top right corner on touch devices).
 - **Bonus food timer** (when active) — a thin shrinking bar near the bonus food, or a numeric countdown in the HUD.
 
 Game-over modal contains: final score, best score, "New record!" badge if applicable, **Play Again** button, **Main Menu** button.

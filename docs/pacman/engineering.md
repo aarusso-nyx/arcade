@@ -627,8 +627,6 @@ Pause animation when paused; freeze on the current frame.
 
 The play field is centered in the canvas with black padding. The HUD (score, high score, lives, fruit indicators) lives above and below the play field. Total canvas: 224x288. Play field: 224x248 (rows 3-33 of the tile grid). Top HUD: rows 0-2. Bottom HUD: rows 34-35.
 
-Touch dead zone: a 60px-tall band at the top and bottom of the screen on mobile that does *not* register swipes — reserved for OS chrome and pause UI.
-
 ---
 
 ## 10. Input
@@ -646,24 +644,9 @@ Listen on `window` (not on the canvas) so the canvas does not need focus:
 
 Call `preventDefault` on arrow keys to stop the page from scrolling. Do not preventDefault on other keys.
 
-### 10.2 Touch (mobile)
+### 10.2 Touch — explicitly out of scope
 
-Listen for `touchstart`, `touchend` on the canvas. Compute the swipe vector:
-
-```ts
-function onTouchEnd(e) {
-  const dx = e.changedTouches[0].clientX - touchStart.x;
-  const dy = e.changedTouches[0].clientY - touchStart.y;
-  if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return; // tap, ignore
-  if (Math.abs(dx) > Math.abs(dy)) {
-    queueDirection(dx > 0 ? 'right' : 'left');
-  } else {
-    queueDirection(dy > 0 ? 'down' : 'up');
-  }
-}
-```
-
-Minimum swipe length: 20px. Taps (under threshold) do nothing in v1; in v2 a tap could trigger pause.
+**No touch input is implemented.** The game is keyboard-only. Do not register `touchstart`, `touchend`, or pointer-event listeners. Do not render on-screen direction pads. If a player loads the game on a touch-only device they will see a static message that a keyboard is required.
 
 ### 10.3 Input buffering
 
@@ -796,7 +779,6 @@ src/
     animation.ts            # frame timing helpers
   input/
     keyboard.ts             # listener install/uninstall
-    touch.ts                # swipe handler
     buffer.ts               # the nextDir slot
   audio/
     audio.ts                # no-op stub for v1; Web Audio impl for v2
@@ -886,8 +868,7 @@ The game must not leave behind any global event listeners, timers, or canvas ele
 
 - Visual rendering correctness (sprite positions, animation smoothness, maze walls).
 - Input feel — turn responsiveness, corner cutting feel.
-- Mobile swipe gestures across iOS Safari / Android Chrome.
-- Performance on a low-end device (target: 60 FPS sustained on a 5-year-old phone).
+- Performance on a low-end device (target: 60 FPS sustained on a 5-year-old laptop).
 - Sound mix (when v2 audio lands).
 - Pause/resume from window blur and tab switching.
 

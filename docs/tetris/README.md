@@ -60,7 +60,7 @@ This document specifies a single-player, Marathon-mode, Guideline-compliant impl
 
 - Single-player Marathon mode only.
 - Guideline-compliant: SRS rotation, 7-bag randomizer, hold piece, ghost piece, T-spin recognition, back-to-back bonus, combo counter.
-- Keyboard input. Touch support optional.
+- Keyboard input only. No touch or pointer input.
 - 2D canvas rendering.
 - High score persisted to `localStorage`.
 - No multiplayer, no garbage lines, no zone mechanic, no licensed music.

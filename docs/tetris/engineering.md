@@ -1085,17 +1085,9 @@ function onKeyUp(state: DASState) {
 
 The DAS/ARR ticker is called from `frame()` with the real `dt`, not from `tickEngine`. Repeats it emits are fed into the engine on the next engine tick.
 
-### Touch (optional)
+### Touch — explicitly out of scope
 
-For touchscreens, implement:
-
-- Tap on left/right half of playfield → move 1 cell (or hold to DAS).
-- Tap upper portion → rotate CW.
-- Swipe down → soft drop.
-- Swipe down hard / flick → hard drop.
-- Two-finger tap → hold.
-
-This is a v2 concern. v1 ships keyboard-only and displays an "unsupported on touch" notice when no keyboard is detected (heuristic: no `keydown` event within 5 s of mount).
+**No touch or pointer input is implemented.** The game is keyboard-only. Do not attach `touchstart`/`pointerdown` listeners and do not render on-screen control buttons. A touch-only visitor sees a static "keyboard required" notice in place of the playfield.
 
 ---
 

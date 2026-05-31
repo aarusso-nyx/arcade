@@ -11,7 +11,8 @@ Clear every pellet from the maze. There are 240 small pellets and 4 large power 
 - **Arrow keys** or **WASD** — change direction
 - **P** or **Esc** — pause / resume
 - **Enter** — start game / continue from game over
-- **Touch (mobile)** — swipe up / down / left / right on the play field
+
+The game is keyboard-only. No touch or pointer input.
 
 Direction inputs are buffered: if you press a direction while Pac-Man is between intersections, the game remembers it and turns at the next legal opportunity. The buffer window is generous (about a third of a second) and clears if you press a different direction.
 
