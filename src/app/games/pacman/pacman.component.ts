@@ -113,8 +113,8 @@ import { createPacmanGame, type PacmanGame } from './game';
       gap: 0.5rem 0.75rem;
       font-variant-numeric: tabular-nums;
     }
-    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--nyx-pixel-font); }
-    .scores .value { font-size: 0.9rem; font-weight: 600; min-width: 2ch; text-align: right; font-family: var(--nyx-pixel-font); color: #ffd24a; }
+    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: #ffd24a; line-height: 1; }
     .help-btn {
       background: transparent;
       color: inherit;

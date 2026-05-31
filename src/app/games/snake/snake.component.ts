@@ -104,8 +104,8 @@ import { createSnakeGame, type SnakeGame } from './game';
       gap: 0.5rem;
       font-variant-numeric: tabular-nums;
     }
-    .scores .label { color: #8a8f99; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--nyx-pixel-font); }
-    .scores .value { font-size: 1rem; font-weight: 600; min-width: 3ch; text-align: right; font-family: var(--nyx-pixel-font); color: #ffd24a; }
+    .scores .label { color: #8a8f99; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 1.25rem; font-weight: 600; min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: #ffd24a; line-height: 1; }
     .help-btn {
       background: transparent;
       color: inherit;

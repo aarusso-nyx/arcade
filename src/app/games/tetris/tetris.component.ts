@@ -119,8 +119,8 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       align-items: center;
     }
     .stat { display: flex; flex-direction: column; align-items: flex-end; }
-    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--nyx-pixel-font); }
-    .scores .value { font-size: 0.9rem; font-weight: 600; min-width: 3ch; text-align: right; font-family: var(--nyx-pixel-font); color: #ffd24a; }
+    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: #ffd24a; line-height: 1; margin-top: 0.25rem; }
     .help-btn {
       background: transparent;
       color: inherit;

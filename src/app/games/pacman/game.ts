@@ -76,6 +76,7 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
     logicalHeight: CANVAS_H,
     scaling: 'pixel-art',
     background: '#000000',
+    border: '1px solid #2a2f38',
   });
   const mazeCache: MazeCache = buildMazeCache(maze);
 
