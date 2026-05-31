@@ -1,0 +1,57 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one deployment at a time; don't cancel in-progress runs so a
+# pushed-mid-deploy doesn't leave the site in a half-uploaded state.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        # base-href must match the repo name's URL segment on github.io.
+        run: npx ng build --configuration production --base-href /arcade/
+
+      - name: SPA 404 fallback + Jekyll opt-out
+        # GH Pages serves 404.html for any URL that isn't a real file. Copying
+        # index.html to 404.html lets deep-linked routes (/arcade/snake, etc.)
+        # reach the Angular router instead of dying at the static layer.
+        # .nojekyll stops Pages from stripping underscore-prefixed Angular files.
+        run: |
+          cp dist/arcade-newer/browser/index.html dist/arcade-newer/browser/404.html
+          touch dist/arcade-newer/browser/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/arcade-newer/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
