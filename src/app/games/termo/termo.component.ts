@@ -2,11 +2,13 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  inject,
   OnDestroy,
   signal,
   computed,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createTermoGame, type TermoGame } from './game';
 import { normalize } from './normalize';
 import {
@@ -49,7 +51,7 @@ const TOAST_DURATION_MS = 2000;
 
 @Component({
   selector: 'app-termo',
-  imports: [RouterLink],
+  imports: [RouterLink, HelpDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page">
@@ -71,8 +73,53 @@ const TOAST_DURATION_MS = 2000;
             [class.active]="mode() === 'infinite'"
             (click)="setMode('infinite')"
           >Treino</button>
+          <button
+            type="button"
+            class="help-btn"
+            (click)="helpOpen.set(true)"
+            aria-label="Instruções"
+            title="Instruções (?)"
+          >?</button>
         </div>
       </header>
+
+      <app-help-dialog [(open)]="helpOpen" title="Termo">
+        <h4>Objetivo</h4>
+        <p>
+          Descubra a palavra do dia em até <strong>6 tentativas</strong> (ou 7 / 8 para
+          palavras de 6 / 7 letras no modo Treino). Cada palpite deve ser uma palavra válida.
+        </p>
+        <h4>Cores</h4>
+        <p>
+          <strong style="color:#6aaa64">Verde</strong> — letra certa na posição certa.<br>
+          <strong style="color:#c9b458">Amarelo</strong> — letra existe na palavra, em outra posição.<br>
+          <strong style="color:#888">Cinza</strong> — letra não existe na palavra.
+        </p>
+        <p>
+          O avaliador usa o algoritmo de duas passadas (marcação de verdes primeiro,
+          depois amarelos), então palpites com letras repetidas se comportam como no Wordle
+          original.
+        </p>
+        <h4>Controles</h4>
+        <table>
+          <tr><td><kbd>A</kbd>…<kbd>Z</kbd></td><td>Digitar letra (acentos são normalizados)</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>Enviar palpite</td></tr>
+          <tr><td><kbd>Backspace</kbd></td><td>Apagar letra</td></tr>
+          <tr><td><kbd>?</kbd></td><td>Abrir / fechar esta janela</td></tr>
+        </table>
+        <p>
+          O teclado virtual também aceita cliques e mostra a melhor pista descoberta para
+          cada letra (verde &gt; amarelo &gt; cinza).
+        </p>
+        <h4>Modos</h4>
+        <p>
+          <strong>Diário</strong> — uma palavra de 5 letras por dia, igual para todo mundo.
+          O progresso é salvo até a próxima meia-noite local. Vencer mostra o botão
+          <em>Compartilhar</em> (grade de emojis).<br>
+          <strong>Treino</strong> — palavras aleatórias. Você escolhe o comprimento (5, 6, ou 7);
+          sequências de vitórias são contadas separadamente por comprimento.
+        </p>
+      </app-help-dialog>
 
       @if (loadError()) {
         <div class="error" role="alert">{{ loadError() }}</div>
@@ -229,6 +276,21 @@ const TOAST_DURATION_MS = 2000;
       opacity: 0.7;
     }
     .mode-toggle button.active { background: #3a3f4b; opacity: 1; }
+    .help-btn {
+      margin-left: 0.5rem;
+      background: transparent;
+      color: inherit;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      width: 1.75rem;
+      height: 1.75rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      opacity: 0.6;
+      padding: 0;
+    }
+    .help-btn:hover { opacity: 1; }
 
     .length-toggle {
       display: inline-flex;
@@ -406,6 +468,13 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   private shakingTimer: number | null = null;
   private revealTimers: number[] = [];
   private bouncingTimer: number | null = null;
+
+  protected readonly helpOpen = signal(false);
+
+  constructor() {
+    const route = inject(ActivatedRoute);
+    if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
+  }
 
   // ---------- reactive UI state ----------
   protected readonly ready = signal(false);
@@ -635,6 +704,17 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   }
 
   private onPhysicalKey(e: KeyboardEvent): void {
+    // Help toggle: ? key works regardless of game status. (Not 'H' — H is a
+    // legitimate letter input in Termo, so binding it to help would break
+    // typing words containing H.)
+    if (e.key === '?') {
+      e.preventDefault();
+      this.helpOpen.update((v) => !v);
+      return;
+    }
+    // If the help dialog is open, swallow letter/Enter/Backspace events so
+    // typing inside the dialog doesn't dispatch into the game.
+    if (this.helpOpen()) return;
     if (!this.game) return;
     if (this.game.state().status !== 'playing') return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;

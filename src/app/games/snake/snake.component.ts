@@ -3,16 +3,19 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  HostListener,
+  inject,
   OnDestroy,
   signal,
   viewChild,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createSnakeGame, type SnakeGame } from './game';
 
 @Component({
   selector: 'app-snake',
-  imports: [RouterLink],
+  imports: [RouterLink, HelpDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page">
@@ -24,13 +27,52 @@ import { createSnakeGame, type SnakeGame } from './game';
           <span class="value">{{ score() }}</span>
           <span class="label">Best</span>
           <span class="value">{{ highScore() }}</span>
+          <button
+            type="button"
+            class="help-btn"
+            (click)="helpOpen.set(true)"
+            aria-label="Instructions"
+            title="Instructions (H or ?)"
+          >?</button>
         </div>
       </header>
       <div #host class="host"></div>
       <p class="hint">
         Arrows or WASD to turn. Space pauses. Enter starts.
         T toggles wrap mode (resets the run). 1 / 2 / 3 set the input queue depth.
+        H or ? for help.
       </p>
+      <app-help-dialog [(open)]="helpOpen" title="Snake">
+        <h4>Goal</h4>
+        <p>
+          Eat the red apples to grow your snake. Each apple is worth <strong>10 points</strong>.
+          Bonus food (yellow, pulsing) lasts a few seconds and is worth <strong>50 points</strong>.
+          You get <strong>+25</strong> every time your length crosses a multiple of 10.
+        </p>
+        <h4>Controls</h4>
+        <table>
+          <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> / <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Turn</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>Start a new run</td></tr>
+          <tr><td><kbd>T</kbd></td><td>Toggle classic ↔ wrap mode (resets the run)</td></tr>
+          <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Set input queue depth (smaller = snappier)</td></tr>
+          <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
+        </table>
+        <h4>Modes</h4>
+        <p>
+          <strong>Classic</strong> — hitting a wall ends the run.<br>
+          <strong>Wrap</strong> — the snake teleports through the wall to the opposite side.
+        </p>
+        <p>
+          High scores are stored per mode. You die instantly if your head enters your own body —
+          including the cell your tail is about to vacate (canonical Nokia behaviour).
+        </p>
+        <h4>Difficulty</h4>
+        <p>
+          Tick interval starts at 200&thinsp;ms and shaves 10&thinsp;ms every 5 foods eaten,
+          down to a 60&thinsp;ms floor.
+        </p>
+      </app-help-dialog>
     </section>
   `,
   styles: `
@@ -63,6 +105,20 @@ import { createSnakeGame, type SnakeGame } from './game';
     }
     .scores .label { color: #8a8f99; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
     .scores .value { font-size: 1.25rem; font-weight: 600; min-width: 3ch; text-align: right; }
+    .help-btn {
+      background: transparent;
+      color: inherit;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      width: 1.75rem;
+      height: 1.75rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      opacity: 0.6;
+      margin-left: 0.5rem;
+    }
+    .help-btn:hover { opacity: 1; }
     .host {
       width: 100%;
       aspect-ratio: 1 / 1;
@@ -85,6 +141,20 @@ export class SnakeComponent implements AfterViewInit, OnDestroy {
 
   protected readonly score = signal(0);
   protected readonly highScore = signal(0);
+  protected readonly helpOpen = signal(false);
+
+  constructor() {
+    const route = inject(ActivatedRoute);
+    if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  protected onWindowKey(ev: KeyboardEvent): void {
+    if (ev.key === 'h' || ev.key === 'H' || ev.key === '?') {
+      ev.preventDefault();
+      this.helpOpen.update((v) => !v);
+    }
+  }
 
   ngAfterViewInit(): void {
     this.game = createSnakeGame(this.hostRef().nativeElement);

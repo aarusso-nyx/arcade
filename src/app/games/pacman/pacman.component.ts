@@ -3,16 +3,19 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  HostListener,
+  inject,
   OnDestroy,
   signal,
   viewChild,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createPacmanGame, type PacmanGame } from './game';
 
 @Component({
   selector: 'app-pacman',
-  imports: [RouterLink],
+  imports: [RouterLink, HelpDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page">
@@ -28,10 +31,55 @@ import { createPacmanGame, type PacmanGame } from './game';
           <span class="value">{{ lives() }}</span>
           <span class="label">Level</span>
           <span class="value">{{ level() }}</span>
+          <button
+            type="button"
+            class="help-btn"
+            (click)="helpOpen.set(true)"
+            aria-label="Instructions"
+            title="Instructions (H or ?)"
+          >?</button>
         </div>
       </header>
       <div #host class="host"></div>
-      <p class="hint">Arrows or WASD to turn. P or Esc to pause. Enter to restart from game over.</p>
+      <p class="hint">Arrows or WASD to turn. P or Esc to pause. Enter to restart. H or ? for help.</p>
+      <app-help-dialog [(open)]="helpOpen" title="Pac-Man">
+        <h4>Goal</h4>
+        <p>
+          Clear the maze of all <strong>240 pellets</strong> and <strong>4 power pellets</strong>
+          while avoiding the four ghosts. Clearing the board advances you to the next level on a
+          slightly faster version of the same maze. You start with <strong>3 lives</strong> and
+          earn a bonus life at <strong>10,000 points</strong>.
+        </p>
+        <h4>Controls</h4>
+        <table>
+          <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> / <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Change direction</td></tr>
+          <tr><td><kbd>P</kbd> / <kbd>Esc</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>Start, or restart from game over</td></tr>
+          <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
+        </table>
+        <p>
+          Direction inputs are buffered — press a turn while between intersections and Pac-Man
+          will take it at the next legal opportunity.
+        </p>
+        <h4>Scoring</h4>
+        <table>
+          <tr><td>Pellet</td><td>10</td></tr>
+          <tr><td>Power pellet</td><td>50</td></tr>
+          <tr><td>Ghost (chain)</td><td>200 → 400 → 800 → 1600</td></tr>
+          <tr><td>Fruit (level 1)</td><td>100 (cherry), up to 5000 at later levels</td></tr>
+        </table>
+        <h4>The ghosts</h4>
+        <p>
+          <strong>Blinky</strong> (red) chases you directly.
+          <strong>Pinky</strong> (pink) aims 4 tiles ahead of where you're facing.
+          <strong>Inky</strong> (cyan) flanks using Blinky's position.
+          <strong>Clyde</strong> (orange) chases when far, retreats when close (within 8 tiles).
+        </p>
+        <p>
+          Eat a power pellet to make them <strong>frightened</strong> — they turn blue and become
+          edible for a few seconds. The chain bonus resets when frightened mode ends.
+        </p>
+      </app-help-dialog>
     </section>
   `,
   styles: `
@@ -59,12 +107,25 @@ import { createPacmanGame, type PacmanGame } from './game';
     .scores {
       display: flex;
       flex-wrap: wrap;
-      align-items: baseline;
+      align-items: center;
       gap: 0.5rem 0.75rem;
       font-variant-numeric: tabular-nums;
     }
     .scores .label { color: #8a8f99; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
     .scores .value { font-size: 1.05rem; font-weight: 600; min-width: 2ch; text-align: right; }
+    .help-btn {
+      background: transparent;
+      color: inherit;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      width: 1.75rem;
+      height: 1.75rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      opacity: 0.6;
+    }
+    .help-btn:hover { opacity: 1; }
     .host {
       width: 100%;
       max-width: 560px;
@@ -89,6 +150,20 @@ export class PacmanComponent implements AfterViewInit, OnDestroy {
   protected readonly highScore = signal(0);
   protected readonly lives = signal(0);
   protected readonly level = signal(1);
+  protected readonly helpOpen = signal(false);
+
+  constructor() {
+    const route = inject(ActivatedRoute);
+    if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  protected onWindowKey(ev: KeyboardEvent): void {
+    if (ev.key === 'h' || ev.key === 'H' || ev.key === '?') {
+      ev.preventDefault();
+      this.helpOpen.update((v) => !v);
+    }
+  }
 
   ngAfterViewInit(): void {
     this.game = createPacmanGame(this.hostRef().nativeElement);
