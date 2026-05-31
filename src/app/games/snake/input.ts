@@ -12,7 +12,13 @@ import { Direction, OPPOSITE, InputBuffer } from '../../../core';
  * accepts inputs the player has already forgotten about.
  */
 export class DirectionQueue {
-  private readonly buffer = new InputBuffer<Direction>(2);
+  private buffer: InputBuffer<Direction>;
+  private cap: number;
+
+  constructor(capacity = 2) {
+    this.cap = capacity;
+    this.buffer = new InputBuffer<Direction>(capacity);
+  }
 
   /** Returns true if the input was accepted, false if rejected (reverse) or dropped (full). */
   enqueue(d: Direction, liveDirection: Direction): boolean {
@@ -30,6 +36,28 @@ export class DirectionQueue {
 
   clear(): void {
     this.buffer.clear();
+  }
+
+  /**
+   * Resize the queue's capacity. Existing queued items are preserved in
+   * FIFO order up to the new capacity; if shrinking past the current size,
+   * the OLDEST entries are dropped (matches `InputBuffer`'s overflow rule).
+   */
+  resize(capacity: number): void {
+    if (capacity < 1) throw new Error('DirectionQueue capacity must be >= 1');
+    if (capacity === this.cap) return;
+    // Drain existing entries in FIFO order.
+    const carry: Direction[] = [];
+    let d: Direction | undefined;
+    while ((d = this.buffer.shift()) !== undefined) carry.push(d);
+    this.cap = capacity;
+    this.buffer = new InputBuffer<Direction>(capacity);
+    // Re-push; InputBuffer drops oldest on overflow, which is what we want.
+    for (const item of carry) this.buffer.push(item);
+  }
+
+  get capacity(): number {
+    return this.cap;
   }
 
   get size(): number {

@@ -1,22 +1,24 @@
 import { Direction, DELTA, RNG, randInt, wrapCol, wrapRow, tileIndex } from '../../../core';
 import { SnakeConfig, SCORE } from './config';
-import type { Cell, SnakeState, StepEvents } from './types';
+import type { BodySegment, Cell, SnakeState, StepEvents } from './types';
 
 export function createInitialState(cfg: SnakeConfig, rng: RNG): SnakeState {
   const occupied = new Uint8Array(cfg.cols * cfg.rows);
   const startRow = Math.floor(cfg.rows / 2);
   const startCol = Math.floor(cfg.cols / 2);
-  const body: Cell[] = [];
+  const body: BodySegment[] = [];
   for (let i = 0; i < cfg.initialLength; i++) {
-    const c: Cell = { col: startCol - i, row: startRow };
-    body.push(c);
-    occupied[tileIndex(c.col, c.row, cfg)] = 1;
+    const col = startCol - i;
+    const row = startRow;
+    body.push({ col, row, prevCol: col, prevRow: row, wrapped: false });
+    occupied[tileIndex(col, row, cfg)] = 1;
   }
   const state: SnakeState = {
     cols: cfg.cols,
     rows: cfg.rows,
     mode: cfg.mode,
     body,
+    ghostTail: null,
     occupied,
     direction: 'right',
     pendingGrowth: 0,
@@ -90,16 +92,31 @@ export function step(
   const events = emptyEvents();
   if (state.status !== 'playing') return events;
 
+  // Precondition for tile-to-tile interpolation: every segment records its
+  // current position as `prev` before any movement happens this tick. The
+  // renderer interpolates between prev and current by the loop alpha.
+  for (const seg of state.body) {
+    seg.prevCol = seg.col;
+    seg.prevRow = seg.row;
+    seg.wrapped = false;
+  }
+  // A ghost tail only lives for one frame (the frame after its segment was
+  // popped). Clear it now; we may install a fresh one below.
+  state.ghostTail = null;
+
   if (nextDirection) state.direction = nextDirection;
 
   const head = state.body[0];
   const { dx, dy } = DELTA[state.direction];
   let nc = head.col + dx;
   let nr = head.row + dy;
+  let headWrapped = false;
 
   if (state.mode === 'wrap') {
+    const before = { c: nc, r: nr };
     nc = wrapCol(nc, state);
     nr = wrapRow(nr, state);
+    headWrapped = nc !== before.c || nr !== before.r;
   } else if (nc < 0 || nc >= state.cols || nr < 0 || nr >= state.rows) {
     state.status = 'gameover';
     state.deathCause = 'wall';
@@ -131,8 +148,15 @@ export function step(
     // Bonus does NOT grow further (spec § 5).
   }
 
-  // Push new head.
-  const newHead: Cell = { col: nc, row: nr };
+  // Push new head. A growth tick has the head appear in place (no prev to
+  // slide from); otherwise prev is the cell ahead of the previous head.
+  const newHead: BodySegment = {
+    col: nc,
+    row: nr,
+    prevCol: head.col,
+    prevRow: head.row,
+    wrapped: headWrapped,
+  };
   state.body.unshift(newHead);
   state.occupied[tileIndex(nc, nr, state)] = 1;
 
@@ -146,6 +170,23 @@ export function step(
   } else {
     const tail = state.body.pop()!;
     state.occupied[tileIndex(tail.col, tail.row, state)] = 0;
+    // Keep the vacated tail around for one frame as a "ghost": it interpolates
+    // from where it was at tick start (prevCol/prevRow) toward where the new
+    // tail sits now. Without this, the snake's rear end would visibly pop
+    // off a cell at tick boundaries.
+    const newTail = state.body[state.body.length - 1];
+    if (newTail) {
+      tail.col = newTail.prevCol;
+      tail.row = newTail.prevRow;
+      // Detect a wrap crossing for the ghost too; if its start/end are not
+      // adjacent (Chebyshev > 1), suppress interpolation.
+      if (Math.abs(tail.col - tail.prevCol) > 1 || Math.abs(tail.row - tail.prevRow) > 1) {
+        tail.wrapped = true;
+      }
+      state.ghostTail = tail;
+    } else {
+      state.ghostTail = null;
+    }
   }
 
   state.score += events.scoreDelta;

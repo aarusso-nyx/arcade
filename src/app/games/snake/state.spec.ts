@@ -41,9 +41,10 @@ describe('snake state', () => {
 
     it('advances one cell per tick in the current direction', () => {
       const s = playing();
-      const headBefore = { ...s.body[0] };
+      const headBefore = { col: s.body[0].col, row: s.body[0].row };
       step(s, undefined, 0, mulberry32(2), cfg());
-      expect(s.body[0]).toEqual({ col: headBefore.col + 1, row: headBefore.row });
+      expect(s.body[0].col).toBe(headBefore.col + 1);
+      expect(s.body[0].row).toBe(headBefore.row);
     });
 
     it('preserves length without food', () => {
@@ -124,6 +125,59 @@ describe('snake state', () => {
       s.food = { col: 0, row: 0 };
       step(s, 'right', 0, mulberry32(2), cfg());
       expect(s.status).toBe('playing');
+    });
+
+    it('records prev positions for every segment before advancing', () => {
+      // Precondition for tile-to-tile interpolation: at the start of every
+      // tick, each segment's prevCol/prevRow snapshot must equal its
+      // pre-tick position. The new head's prev must match the OLD head cell
+      // (so it slides in from there).
+      const s = playing();
+      s.food = { col: 0, row: 0 };
+      const oldBody = s.body.map((b) => ({ col: b.col, row: b.row }));
+      step(s, undefined, 0, mulberry32(2), cfg());
+      // New head's prev points at the old head's cell.
+      expect(s.body[0].prevCol).toBe(oldBody[0].col);
+      expect(s.body[0].prevRow).toBe(oldBody[0].row);
+      // Each retained segment carries its own old position as prev (it didn't
+      // move; the array shifted around it).
+      for (let i = 1; i < s.body.length; i++) {
+        expect(s.body[i].prevCol).toBe(s.body[i].col);
+        expect(s.body[i].prevRow).toBe(s.body[i].row);
+      }
+    });
+
+    it('installs a ghost tail on non-growing ticks and clears it on growth ticks', () => {
+      const s = playing();
+      // Non-growing step: food out of the way.
+      s.food = { col: 0, row: 0 };
+      const oldTail = { ...s.body[s.body.length - 1] };
+      step(s, undefined, 0, mulberry32(2), cfg());
+      expect(s.ghostTail).not.toBeNull();
+      // Ghost starts at where the tail was.
+      expect(s.ghostTail!.prevCol).toBe(oldTail.col);
+      expect(s.ghostTail!.prevRow).toBe(oldTail.row);
+
+      // Now plant food in front of the head — growth tick → ghost should clear.
+      const head = s.body[0];
+      s.food = { col: head.col + 1, row: head.row };
+      step(s, undefined, 0, mulberry32(2), cfg());
+      expect(s.ghostTail).toBeNull();
+    });
+
+    it('flags head segment as wrapped when crossing the boundary in wrap mode', () => {
+      const c = cfg({ mode: 'wrap' });
+      const s = createInitialState(c, mulberry32(1));
+      s.status = 'playing';
+      // Drive to the right wall.
+      while (s.body[0].col < c.cols - 1 && s.status === 'playing') {
+        s.food = { col: 0, row: 0 };
+        step(s, undefined, 0, mulberry32(3), c);
+      }
+      s.food = { col: 5, row: 5 };
+      step(s, undefined, 0, mulberry32(3), c);
+      expect(s.body[0].col).toBe(0);
+      expect(s.body[0].wrapped).toBeTrue();
     });
 
     it('awards a length bonus when crossing every 10 segments', () => {

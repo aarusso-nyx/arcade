@@ -48,4 +48,60 @@ describe('DirectionQueue', () => {
     q.clear();
     expect(q.size).toBe(0);
   });
+
+  describe('resize', () => {
+    it('preserves a single queued direction when growing capacity', () => {
+      const q = new DirectionQueue(2);
+      q.enqueue('up', 'right');
+      q.resize(3);
+      expect(q.capacity).toBe(3);
+      expect(q.size).toBe(1);
+      expect(q.shift()).toBe('up');
+    });
+
+    it('preserves queued directions that still fit when shrinking', () => {
+      const q = new DirectionQueue(2);
+      q.enqueue('up', 'right');
+      q.resize(1);
+      expect(q.capacity).toBe(1);
+      expect(q.size).toBe(1);
+      expect(q.shift()).toBe('up');
+    });
+
+    it('drops the oldest queued direction when shrinking past size', () => {
+      const q = new DirectionQueue(2);
+      q.enqueue('up', 'right');
+      q.enqueue('left', 'right'); // queue: [up, left]
+      q.resize(1);
+      expect(q.capacity).toBe(1);
+      expect(q.size).toBe(1);
+      // Oldest (up) was dropped; the newer 'left' survives.
+      expect(q.shift()).toBe('left');
+    });
+
+    it('accepts a third queued direction after growing to capacity 3', () => {
+      const q = new DirectionQueue(2);
+      q.resize(3);
+      q.enqueue('up', 'right');
+      q.enqueue('left', 'right');
+      q.enqueue('down', 'right'); // tail-guard: down vs left is perpendicular, OK
+      expect(q.size).toBe(3);
+      expect(q.shift()).toBe('up');
+      expect(q.shift()).toBe('left');
+      expect(q.shift()).toBe('down');
+    });
+
+    it('is a no-op when capacity is unchanged', () => {
+      const q = new DirectionQueue(2);
+      q.enqueue('up', 'right');
+      q.resize(2);
+      expect(q.size).toBe(1);
+      expect(q.shift()).toBe('up');
+    });
+
+    it('rejects invalid capacity values', () => {
+      const q = new DirectionQueue(2);
+      expect(() => q.resize(0)).toThrow();
+    });
+  });
 });

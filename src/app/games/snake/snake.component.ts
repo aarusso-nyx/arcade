@@ -27,7 +27,10 @@ import { createSnakeGame, type SnakeGame } from './game';
         </div>
       </header>
       <div #host class="host"></div>
-      <p class="hint">Arrows or WASD to turn. Space pauses. Enter starts.</p>
+      <p class="hint">
+        Arrows or WASD to turn. Space pauses. Enter starts.
+        T toggles wrap mode (resets the run). 1 / 2 / 3 set the input queue depth.
+      </p>
     </section>
   `,
   styles: `

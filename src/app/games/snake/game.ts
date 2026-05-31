@@ -38,14 +38,15 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
   const seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
   const rng = mulberry32(seed);
   const storage = createStorage(STORAGE_NS);
-  const storageKey = `bestScore.${cfg.mode}`;
 
   let state: SnakeState = createInitialState(cfg, rng);
-  let highScore = storage.get<number>(storageKey, 0);
+  let bestScoreKey = `bestScore.${cfg.mode}`;
+  let highScore = storage.get<number>(bestScoreKey, 0);
   const subscribers = new Set<(s: number, hs: number) => void>();
   const notify = (): void => subscribers.forEach((cb) => cb(state.score, highScore));
 
-  const queue = new DirectionQueue();
+  const queue = new DirectionQueue(2);
+  let lastAlpha = 0;
 
   const mount: CanvasMount = mountCanvas(host, {
     logicalWidth: cfg.cols * cfg.cellSize,
@@ -74,6 +75,20 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
         beginRun();
       }
     }
+    // T: swap classic <-> wrap mid-session. The current run is sacrificed and
+    // a fresh run begins under the new mode (matches the "fresh start" UX
+    // described in the spec — also keeps mode-specific high scores honest).
+    if (keyboard.consumePress('KeyT')) {
+      cfg.mode = cfg.mode === 'classic' ? 'wrap' : 'classic';
+      bestScoreKey = `bestScore.${cfg.mode}`;
+      highScore = storage.get<number>(bestScoreKey, 0);
+      beginRun();
+    }
+    // 1/2/3: adjust the input queue depth. Smaller = snappier but inputs drop
+    // sooner; larger = more forgiving but inputs may feel "remembered too long".
+    if (keyboard.consumePress('Digit1')) queue.resize(1);
+    if (keyboard.consumePress('Digit2')) queue.resize(2);
+    if (keyboard.consumePress('Digit3')) queue.resize(3);
   };
 
   const beginRun = (): void => {
@@ -102,7 +117,7 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     const events = step(state, nextDir, performance.now(), rng, cfg);
     if (events.scoreDelta > 0 && state.score > highScore) {
       highScore = state.score;
-      storage.set(storageKey, highScore);
+      storage.set(bestScoreKey, highScore);
     }
     if (events.scoreDelta > 0) notify();
     if (state.foodsEaten !== before) {
@@ -111,8 +126,9 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     if (events.died || events.cleared) notify();
   };
 
-  const draw = (): void => {
-    render(mount.ctx, state, cfg, performance.now());
+  const draw = (alpha = lastAlpha): void => {
+    lastAlpha = alpha;
+    render(mount.ctx, state, cfg, performance.now(), alpha);
   };
 
   const loop: Loop = createLoop({
