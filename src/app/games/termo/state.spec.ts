@@ -1,0 +1,213 @@
+import {
+  bumpKeyState,
+  createInitialState,
+  emptyKeyStates,
+  reduce,
+  replayKeyStates,
+  type GameState,
+  type ValidGuessSource,
+} from './state';
+
+const dict = (...words: string[]): ValidGuessSource => {
+  const s = new Set(words);
+  return { has: (w) => s.has(w) };
+};
+
+const fresh = (solution: string): GameState =>
+  createInitialState({ mode: 'infinite', solution });
+
+describe('bumpKeyState', () => {
+  it('promotes by rank only', () => {
+    expect(bumpKeyState('unseen', 'absent')).toBe('absent');
+    expect(bumpKeyState('absent', 'present')).toBe('present');
+    expect(bumpKeyState('present', 'correct')).toBe('correct');
+  });
+
+  it('never demotes', () => {
+    expect(bumpKeyState('correct', 'present')).toBe('correct');
+    expect(bumpKeyState('correct', 'absent')).toBe('correct');
+    expect(bumpKeyState('present', 'absent')).toBe('present');
+  });
+});
+
+describe('emptyKeyStates', () => {
+  it('initializes every A–Z to unseen', () => {
+    const ks = emptyKeyStates();
+    expect(Object.keys(ks).length).toBe(26);
+    expect(ks['A']).toBe('unseen');
+    expect(ks['Z']).toBe('unseen');
+  });
+});
+
+describe('reduce', () => {
+  describe('TYPE_LETTER', () => {
+    it('appends to currentInput', () => {
+      const s = fresh('ABATE');
+      const { state } = reduce(s, { type: 'TYPE_LETTER', letter: 'A' }, dict());
+      expect(state.currentInput).toBe('A');
+    });
+
+    it('caps at 5 letters', () => {
+      let s = fresh('ABATE');
+      for (const ch of 'ABCDEF') {
+        s = reduce(s, { type: 'TYPE_LETTER', letter: ch }, dict()).state;
+      }
+      expect(s.currentInput).toBe('ABCDE');
+    });
+
+    it('ignores non-A-Z input', () => {
+      const s = fresh('ABATE');
+      const { state } = reduce(s, { type: 'TYPE_LETTER', letter: '1' }, dict());
+      expect(state.currentInput).toBe('');
+    });
+
+    it('is a no-op after status === won', () => {
+      const s = { ...fresh('ABATE'), status: 'won' as const };
+      const { state } = reduce(s, { type: 'TYPE_LETTER', letter: 'A' }, dict());
+      expect(state.currentInput).toBe('');
+    });
+  });
+
+  describe('BACKSPACE', () => {
+    it('removes one letter', () => {
+      const s = { ...fresh('ABATE'), currentInput: 'ABC' };
+      const { state } = reduce(s, { type: 'BACKSPACE' }, dict());
+      expect(state.currentInput).toBe('AB');
+    });
+
+    it('is a no-op on empty input', () => {
+      const s = fresh('ABATE');
+      const { state } = reduce(s, { type: 'BACKSPACE' }, dict());
+      expect(state.currentInput).toBe('');
+    });
+  });
+
+  describe('SUBMIT', () => {
+    it('shakes when under 5 letters', () => {
+      const s = { ...fresh('ABATE'), currentInput: 'ABC' };
+      const { state, effects } = reduce(s, { type: 'SUBMIT' }, dict('ABATE'));
+      expect(state.currentInput).toBe('ABC');
+      expect(state.currentRow).toBe(0);
+      expect(effects.some((e) => e.type === 'SHAKE_ROW')).toBeTrue();
+      expect(
+        effects.some(
+          (e) => e.type === 'TOAST' && e.message === 'letras faltando',
+        ),
+      ).toBeTrue();
+    });
+
+    it('shakes when word not in valid set', () => {
+      const s = { ...fresh('ABATE'), currentInput: 'ZZZZZ' };
+      const { state, effects } = reduce(s, { type: 'SUBMIT' }, dict('ABATE'));
+      expect(state.currentInput).toBe('ZZZZZ');
+      expect(state.currentRow).toBe(0);
+      expect(
+        effects.some(
+          (e) => e.type === 'TOAST' && e.message === 'palavra inválida',
+        ),
+      ).toBeTrue();
+    });
+
+    it('accepts a valid guess: advances row, clears input, records evaluation', () => {
+      const s = { ...fresh('ABATE'), currentInput: 'BANCO' };
+      const { state, effects } = reduce(
+        s,
+        { type: 'SUBMIT' },
+        dict('ABATE', 'BANCO'),
+      );
+      expect(state.guesses).toEqual(['BANCO']);
+      expect(state.evaluations.length).toBe(1);
+      expect(state.evaluations[0]).toEqual([
+        'present', 'present', 'absent', 'absent', 'absent',
+      ]);
+      expect(state.currentRow).toBe(1);
+      expect(state.currentInput).toBe('');
+      expect(state.status).toBe('playing');
+      expect(effects.some((e) => e.type === 'FLIP_REVEAL')).toBeTrue();
+      expect(effects.some((e) => e.type === 'PERSIST')).toBeTrue();
+    });
+
+    it('sets status to won when guess equals solution', () => {
+      const s = { ...fresh('ABATE'), currentInput: 'ABATE' };
+      const { state, effects } = reduce(s, { type: 'SUBMIT' }, dict('ABATE'));
+      expect(state.status).toBe('won');
+      expect(effects.some((e) => e.type === 'BOUNCE_WIN')).toBeTrue();
+    });
+
+    it('sets status to lost on 6th wrong guess', () => {
+      let s: GameState = fresh('ABATE');
+      const words = ['MUNDO', 'CARPI', 'PLUMA', 'TROCA', 'PISCO', 'BANCO'];
+      const guessDict = dict('ABATE', ...words);
+      for (const g of words) {
+        s = reduce(s, { type: 'TYPE_LETTER', letter: g[0] }, guessDict).state;
+        s = reduce(s, { type: 'TYPE_LETTER', letter: g[1] }, guessDict).state;
+        s = reduce(s, { type: 'TYPE_LETTER', letter: g[2] }, guessDict).state;
+        s = reduce(s, { type: 'TYPE_LETTER', letter: g[3] }, guessDict).state;
+        s = reduce(s, { type: 'TYPE_LETTER', letter: g[4] }, guessDict).state;
+        s = reduce(s, { type: 'SUBMIT' }, guessDict).state;
+      }
+      expect(s.status).toBe('lost');
+      expect(s.guesses.length).toBe(6);
+    });
+
+    it('updates keyStates with green/yellow/gray', () => {
+      const s = { ...fresh('ABATE'), currentInput: 'BANCO' };
+      const { state } = reduce(s, { type: 'SUBMIT' }, dict('ABATE', 'BANCO'));
+      // BANCO vs ABATE: B present (in word), A present (in word), N absent, C absent, O absent.
+      expect(state.keyStates['B']).toBe('present');
+      expect(state.keyStates['A']).toBe('present');
+      expect(state.keyStates['N']).toBe('absent');
+      expect(state.keyStates['C']).toBe('absent');
+      expect(state.keyStates['O']).toBe('absent');
+      expect(state.keyStates['Z']).toBe('unseen');
+    });
+
+    it('keyStates priority: a letter once green stays green', () => {
+      // Solution: ABATE. First guess BANCO (A present at pos1). Then ATIVA.
+      // ATIVA: A==A pos0 green, T present, I absent, V absent, A absent (only one A left in pool).
+      // After first guess A is present; after second A becomes correct.
+      let s: GameState = fresh('ABATE');
+      const dictionary = dict('ABATE', 'BANCO', 'ATIVA');
+      s = { ...s, currentInput: 'BANCO' };
+      s = reduce(s, { type: 'SUBMIT' }, dictionary).state;
+      expect(s.keyStates['A']).toBe('present');
+      s = { ...s, currentInput: 'ATIVA' };
+      s = reduce(s, { type: 'SUBMIT' }, dictionary).state;
+      expect(s.keyStates['A']).toBe('correct');
+
+      // Now if we played a third hypothetical guess where A becomes present
+      // again at a wrong position, it must remain correct.
+      const ks = { ...s.keyStates, A: 'correct' as const };
+      expect(
+        bumpKeyState(ks['A'], 'present'),
+      ).toBe('correct');
+    });
+
+    it('no-op after game has been won', () => {
+      const s = { ...fresh('ABATE'), status: 'won' as const, currentInput: 'ABCDE' };
+      const { state, effects } = reduce(s, { type: 'SUBMIT' }, dict('ABCDE'));
+      expect(state).toBe(s);
+      expect(effects).toEqual([]);
+    });
+  });
+});
+
+describe('replayKeyStates', () => {
+  it('rebuilds key colors from submitted guesses', () => {
+    const ks = replayKeyStates(
+      ['BANCO', 'ABATE'],
+      [
+        ['present', 'present', 'absent', 'absent', 'absent'],
+        ['correct', 'correct', 'correct', 'correct', 'correct'],
+      ],
+    );
+    expect(ks['B']).toBe('correct');
+    expect(ks['A']).toBe('correct');
+    expect(ks['T']).toBe('correct');
+    expect(ks['E']).toBe('correct');
+    expect(ks['N']).toBe('absent');
+    expect(ks['C']).toBe('absent');
+    expect(ks['O']).toBe('absent');
+    expect(ks['Z']).toBe('unseen');
+  });
+});
