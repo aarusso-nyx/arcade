@@ -52,6 +52,7 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     logicalHeight: cfg.rows * cfg.cellSize,
     scaling: 'fit',
     background: '#0b0d10',
+    border: '1px solid #2a2f38',
   });
 
   const keyboard: Keyboard = createKeyboard({

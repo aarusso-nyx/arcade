@@ -95,24 +95,40 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   wrap.style.gap = '12px';
   host.appendChild(wrap);
 
+  // Explicit pixel sizes for both panels so mountCanvas can measure a real
+  // box on first apply() — otherwise flex children with no intrinsic content
+  // report clientWidth = 0 and the canvas falls back to scale = 1 at logical
+  // size, which on a high-pixel-density display is tiny.
+  const playWidthPx = COLS * cfg.cellPx;
+  const playHeightPx = cfg.rows * cfg.cellPx;
+  const sideWidthPx = 5 * cfg.previewCellPx + 24;
+  const sideHeightPx =
+    4 * cfg.previewCellPx + 12 + cfg.nextQueueLength * (3 * cfg.previewCellPx) + 30 + 24;
+
   const playHost = document.createElement('div');
   playHost.style.flex = '0 0 auto';
+  playHost.style.width = `${playWidthPx}px`;
+  playHost.style.height = `${playHeightPx}px`;
   const sideHost = document.createElement('div');
   sideHost.style.flex = '0 0 auto';
+  sideHost.style.width = `${sideWidthPx}px`;
+  sideHost.style.height = `${sideHeightPx}px`;
   wrap.appendChild(playHost);
   wrap.appendChild(sideHost);
 
   const playMount: CanvasMount = mountCanvas(playHost, {
-    logicalWidth: COLS * cfg.cellPx,
-    logicalHeight: cfg.rows * cfg.cellPx,
+    logicalWidth: playWidthPx,
+    logicalHeight: playHeightPx,
     scaling: 'fit',
     background: '#0b0d10',
+    border: '1px solid #2a2f38',
   });
   const sideMount: CanvasMount = mountCanvas(sideHost, {
-    logicalWidth: 5 * cfg.previewCellPx + 24,
-    logicalHeight: 4 * cfg.previewCellPx + 12 + cfg.nextQueueLength * (3 * cfg.previewCellPx) + 30 + 24,
+    logicalWidth: sideWidthPx,
+    logicalHeight: sideHeightPx,
     scaling: 'fit',
     background: '#14171c',
+    border: '1px solid #2a2f38',
   });
 
   // DAS state.

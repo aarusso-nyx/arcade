@@ -71,8 +71,7 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 600px;
-      padding: 0.5rem 0;
+      min-height: 680px;
     }
     .hint { color: #8a8f99; font-size: 0.8rem; margin: 0; text-align: center; }
     :host { display: block; min-height: 100vh; background: #14171c; }

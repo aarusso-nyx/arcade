@@ -14,6 +14,11 @@ export interface CanvasMountOptions {
   background?: string;
   /** Debounce ms for resize handling. Default 100. */
   resizeDebounceMs?: number;
+  /**
+   * Optional CSS border applied to the canvas element. Helps the game's
+   * bounds be visible against a dark page background. Default unset.
+   */
+  border?: string;
 }
 
 export interface CanvasMount {
@@ -39,6 +44,7 @@ export function mountCanvas(host: HTMLElement, opts: CanvasMountOptions): Canvas
   if (!ctx) throw new Error('2D canvas context unavailable');
 
   if (scaling === 'pixel-art') canvas.setAttribute('style', PIXEL_ART_STYLES);
+  if (opts.border) canvas.style.border = opts.border;
   if (opts.background) host.style.background = opts.background;
 
   host.appendChild(canvas);
@@ -80,6 +86,17 @@ export function mountCanvas(host: HTMLElement, opts: CanvasMountOptions): Canvas
   };
   window.addEventListener('resize', onResize);
 
+  // ngAfterViewInit fires before browser layout has settled, so the initial
+  // apply() may see clientWidth/Height of 0 (or fall through to the logical
+  // fallback) and pick scale = 1. ResizeObserver lets us recompute the scale
+  // as soon as the host's layout box is known and again whenever it changes
+  // (e.g. CSS adjusting on viewport breakpoints).
+  let resizeObserver: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => apply());
+    resizeObserver.observe(host);
+  }
+
   return {
     canvas,
     ctx,
@@ -99,6 +116,7 @@ export function mountCanvas(host: HTMLElement, opts: CanvasMountOptions): Canvas
     resize: apply,
     destroy(): void {
       window.removeEventListener('resize', onResize);
+      resizeObserver?.disconnect();
       if (debounceHandle !== null) window.clearTimeout(debounceHandle);
       canvas.remove();
     },
