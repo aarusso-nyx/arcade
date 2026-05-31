@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createSnakeGame, type SnakeGame } from './game';
 
@@ -21,7 +21,7 @@ import { createSnakeGame, type SnakeGame } from './game';
     <section class="page">
       <header>
         <a routerLink="/">&larr; Arcade</a>
-        <h2>Snake</h2>
+        <h2 class="pixel">Snake</h2>
         <div class="scores">
           <span class="label">Score</span>
           <span class="value">{{ score() }}</span>
@@ -94,7 +94,8 @@ import { createSnakeGame, type SnakeGame } from './game';
       align-items: center;
       gap: 1rem;
     }
-    h2 { margin: 0; }
+    h2 { margin: 0; font-size: 1.1rem; }
+    h2.pixel { letter-spacing: 0.06em; }
     a { color: inherit; text-decoration: none; opacity: 0.8; }
     a:hover { opacity: 1; }
     .scores {
@@ -103,8 +104,8 @@ import { createSnakeGame, type SnakeGame } from './game';
       gap: 0.5rem;
       font-variant-numeric: tabular-nums;
     }
-    .scores .label { color: #8a8f99; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
-    .scores .value { font-size: 1.25rem; font-weight: 600; min-width: 3ch; text-align: right; }
+    .scores .label { color: #8a8f99; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 1rem; font-weight: 600; min-width: 3ch; text-align: right; font-family: var(--nyx-pixel-font); color: #ffd24a; }
     .help-btn {
       background: transparent;
       color: inherit;
@@ -143,6 +144,8 @@ export class SnakeComponent implements AfterViewInit, OnDestroy {
   protected readonly highScore = signal(0);
   protected readonly helpOpen = signal(false);
 
+  private readonly router = inject(Router);
+
   constructor() {
     const route = inject(ActivatedRoute);
     if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
@@ -153,6 +156,17 @@ export class SnakeComponent implements AfterViewInit, OnDestroy {
     if (ev.key === 'h' || ev.key === 'H' || ev.key === '?') {
       ev.preventDefault();
       this.helpOpen.update((v) => !v);
+      return;
+    }
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      // First Esc when playing -> pause. Subsequent Esc (any other state,
+      // including paused) -> quit to arcade home.
+      if (this.game && this.game.state.status === 'playing') {
+        this.game.pause();
+      } else {
+        this.router.navigate(['/']);
+      }
     }
   }
 

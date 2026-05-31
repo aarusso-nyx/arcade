@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createPacmanGame, type PacmanGame } from './game';
 
@@ -21,7 +21,7 @@ import { createPacmanGame, type PacmanGame } from './game';
     <section class="page">
       <header>
         <a routerLink="/">&larr; Arcade</a>
-        <h2>Pac-Man</h2>
+        <h2 class="pixel">Pac-Man</h2>
         <div class="scores">
           <span class="label">Score</span>
           <span class="value">{{ score() }}</span>
@@ -41,7 +41,7 @@ import { createPacmanGame, type PacmanGame } from './game';
         </div>
       </header>
       <div #host class="host"></div>
-      <p class="hint">Arrows or WASD to turn. P or Esc to pause. Enter to restart. H or ? for help.</p>
+      <p class="hint">Arrows or WASD to turn. P or Space pause. Enter to restart. Esc pause / quit. H or ? for help.</p>
       <app-help-dialog [(open)]="helpOpen" title="Pac-Man">
         <h4>Goal</h4>
         <p>
@@ -53,7 +53,8 @@ import { createPacmanGame, type PacmanGame } from './game';
         <h4>Controls</h4>
         <table>
           <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> / <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Change direction</td></tr>
-          <tr><td><kbd>P</kbd> / <kbd>Esc</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>P</kbd> / <kbd>Space</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to the arcade home</td></tr>
           <tr><td><kbd>Enter</kbd></td><td>Start, or restart from game over</td></tr>
           <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
         </table>
@@ -101,7 +102,8 @@ import { createPacmanGame, type PacmanGame } from './game';
       align-items: center;
       gap: 1rem;
     }
-    h2 { margin: 0; }
+    h2 { margin: 0; font-size: 1.1rem; }
+    h2.pixel { letter-spacing: 0.06em; }
     a { color: inherit; text-decoration: none; opacity: 0.8; }
     a:hover { opacity: 1; }
     .scores {
@@ -111,8 +113,8 @@ import { createPacmanGame, type PacmanGame } from './game';
       gap: 0.5rem 0.75rem;
       font-variant-numeric: tabular-nums;
     }
-    .scores .label { color: #8a8f99; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
-    .scores .value { font-size: 1.05rem; font-weight: 600; min-width: 2ch; text-align: right; }
+    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 0.9rem; font-weight: 600; min-width: 2ch; text-align: right; font-family: var(--nyx-pixel-font); color: #ffd24a; }
     .help-btn {
       background: transparent;
       color: inherit;
@@ -152,6 +154,8 @@ export class PacmanComponent implements AfterViewInit, OnDestroy {
   protected readonly level = signal(1);
   protected readonly helpOpen = signal(false);
 
+  private readonly router = inject(Router);
+
   constructor() {
     const route = inject(ActivatedRoute);
     if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
@@ -162,6 +166,17 @@ export class PacmanComponent implements AfterViewInit, OnDestroy {
     if (ev.key === 'h' || ev.key === 'H' || ev.key === '?') {
       ev.preventDefault();
       this.helpOpen.update((v) => !v);
+      return;
+    }
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      // Pacman uses game.state.phase, not status.
+      const phase = this.game?.state.phase;
+      if (phase === 'playing' || phase === 'ready') {
+        this.game!.pause();
+      } else {
+        this.router.navigate(['/']);
+      }
     }
   }
 

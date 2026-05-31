@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
 
@@ -21,7 +21,7 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
     <section class="page">
       <header>
         <a routerLink="/">&larr; Arcade</a>
-        <h2>Tetris</h2>
+        <h2 class="pixel">Tetris</h2>
         <div class="scores">
           <div class="stat"><span class="label">Score</span><span class="value">{{ score() }}</span></div>
           <div class="stat"><span class="label">High</span><span class="value">{{ highScore() }}</span></div>
@@ -39,8 +39,8 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       <div #host class="host"></div>
       <p class="hint">
         Arrows to move &middot; Z/X or Up to rotate &middot; A for 180 &middot; Space hard drop
-        &middot; Down soft drop &middot; C/Shift hold &middot; Esc/P pause &middot; Enter start/retry
-        &middot; <kbd>H</kbd> for help
+        &middot; Down soft drop &middot; C/Shift hold &middot; P pause &middot; Enter start/retry
+        &middot; Esc pause / quit &middot; <kbd>H</kbd> for help
       </p>
       <app-help-dialog [(open)]="helpOpen" title="Tetris">
         <h4>Goal</h4>
@@ -58,7 +58,8 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
           <tr><td><kbd>Z</kbd></td><td>Rotate counter-clockwise</td></tr>
           <tr><td><kbd>A</kbd></td><td>180° flip</td></tr>
           <tr><td><kbd>C</kbd> / <kbd>Shift</kbd></td><td>Hold (one swap per piece)</td></tr>
-          <tr><td><kbd>Esc</kbd> / <kbd>P</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>P</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to the arcade home</td></tr>
           <tr><td><kbd>Enter</kbd></td><td>Start / retry after game over</td></tr>
           <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
         </table>
@@ -107,7 +108,8 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       align-items: center;
       gap: 1rem;
     }
-    h2 { margin: 0; }
+    h2 { margin: 0; font-size: 1.1rem; }
+    h2.pixel { letter-spacing: 0.06em; }
     a { color: inherit; text-decoration: none; opacity: 0.8; }
     a:hover { opacity: 1; }
     .scores {
@@ -117,8 +119,8 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       align-items: center;
     }
     .stat { display: flex; flex-direction: column; align-items: flex-end; }
-    .scores .label { color: #8a8f99; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
-    .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 3ch; text-align: right; }
+    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 0.9rem; font-weight: 600; min-width: 3ch; text-align: right; font-family: var(--nyx-pixel-font); color: #ffd24a; }
     .help-btn {
       background: transparent;
       color: inherit;
@@ -159,6 +161,8 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
   protected readonly level = signal(1);
   protected readonly helpOpen = signal(false);
 
+  private readonly router = inject(Router);
+
   constructor() {
     const route = inject(ActivatedRoute);
     if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
@@ -169,6 +173,16 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
     if (ev.key === 'h' || ev.key === 'H' || ev.key === '?') {
       ev.preventDefault();
       this.helpOpen.update((v) => !v);
+      return;
+    }
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      const status = this.game?.state.status;
+      if (status === 'playing' || status === 'lineclear') {
+        this.game!.pause();
+      } else {
+        this.router.navigate(['/']);
+      }
     }
   }
 

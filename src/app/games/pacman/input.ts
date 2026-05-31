@@ -11,8 +11,10 @@ export const KEY_TO_DIRECTION: Readonly<Record<string, Direction>> = {
   KeyD: 'right',
 };
 
-export const PAUSE_CODES = ['KeyP', 'Escape'] as const;
-export const ACTION_CODES = ['Enter', 'Space'] as const;
+// Escape is intentionally NOT bound here — the Angular component intercepts
+// it for the global pause → quit-to-home behaviour. KeyP and Space pause.
+export const PAUSE_CODES = ['KeyP', 'Space'] as const;
+export const ACTION_CODES = ['Enter'] as const;
 
 export const PREVENT_DEFAULT_CODES = [
   'ArrowUp',

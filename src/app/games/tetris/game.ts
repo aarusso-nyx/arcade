@@ -240,7 +240,9 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   /** Handle key edge events (called once per frame for each relevant key). */
   const handleEdges = (): void => {
     // Pause / restart that work regardless of state.
-    if (onPressed('Escape') || onPressed('KeyP')) {
+    // Escape is intentionally NOT bound here — the Angular component
+    // intercepts it for the global pause → quit-to-home behaviour.
+    if (onPressed('KeyP')) {
       if (state.status === 'playing' || state.status === 'paused' || state.status === 'lineclear') {
         togglePause();
       }

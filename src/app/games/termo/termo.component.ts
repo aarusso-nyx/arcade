@@ -7,7 +7,7 @@ import {
   signal,
   computed,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { createTermoGame, type TermoGame } from './game';
 import { normalize } from './normalize';
@@ -57,7 +57,7 @@ const TOAST_DURATION_MS = 2000;
     <section class="page">
       <header>
         <a routerLink="/" class="back">&larr; Arcade</a>
-        <h2>Termo</h2>
+        <h2 class="pixel">Termo</h2>
         <div class="mode-toggle" role="tablist" aria-label="Modo de jogo">
           <button
             type="button"
@@ -256,7 +256,7 @@ const TOAST_DURATION_MS = 2000;
       align-items: center;
       gap: 0.75rem;
     }
-    h2 { margin: 0; text-align: center; font-size: 1.4rem; letter-spacing: 0.05em; }
+    h2 { margin: 0; text-align: center; font-size: 1rem; letter-spacing: 0.06em; }
     a.back { color: inherit; text-decoration: none; opacity: 0.8; font-size: 0.9rem; }
     a.back:hover { opacity: 1; }
     .mode-toggle {
@@ -470,6 +470,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   private bouncingTimer: number | null = null;
 
   protected readonly helpOpen = signal(false);
+  private readonly router = inject(Router);
 
   constructor() {
     const route = inject(ActivatedRoute);
@@ -710,6 +711,13 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     if (e.key === '?') {
       e.preventDefault();
       this.helpOpen.update((v) => !v);
+      return;
+    }
+    // Esc: quit straight to the arcade home (Termo has no pause state, so
+    // there's nothing to pause to first).
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this.router.navigate(['/']);
       return;
     }
     // If the help dialog is open, swallow letter/Enter/Backspace events so
