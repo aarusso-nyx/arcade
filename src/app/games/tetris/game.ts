@@ -1,13 +1,17 @@
 import {
+  createAudio,
   createKeyboard,
   createLoop,
   createStorage,
   mountCanvas,
   mulberry32,
+  registerSounds,
+  type Audio,
   type CanvasMount,
   type Keyboard,
   type Loop,
 } from '../../../core';
+import { TETRIS_SFX } from './audio';
 import { COLS, DEFAULT_CONFIG, type TetrisConfig } from './config';
 import {
   createDASState,
@@ -44,6 +48,8 @@ export interface TetrisGame {
   readonly state: GameState;
   readonly highScore: number;
   onChange(cb: (snapshot: TetrisSnapshot) => void): () => void;
+  toggleMute(): boolean;
+  readonly muted: boolean;
 }
 
 export interface TetrisSnapshot {
@@ -67,6 +73,8 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   const seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
   let rng = mulberry32(seed);
   const storage = createStorage(STORAGE_NS);
+  const audio: Audio = createAudio();
+  registerSounds(audio, TETRIS_SFX);
 
   let state: GameState = createInitialState();
   let bag = new SevenBag(rng);
@@ -203,9 +211,34 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   };
 
   const forceLock = (): void => {
+    const b2bBefore = state.b2bActive;
     const events = lockAndScore(state, cfg);
+    // Sound priority: line-clear chime takes precedence over the lock thunk
+    // (a line-clear implies a lock, but we want the brighter sound to win).
+    if (events.lineClear) {
+      const { linesCleared, tspin } = events.lineClear.score;
+      if (tspin === 'full' || tspin === 'mini') {
+        audio.play('tspin');
+      } else if (linesCleared === 4) {
+        audio.play('tetris');
+      } else if (linesCleared === 3) {
+        audio.play('triple');
+      } else if (linesCleared === 2) {
+        audio.play('double');
+      } else if (linesCleared >= 1) {
+        audio.play('single');
+      }
+      // Back-to-back reinforcement: if the prior chain was active and this
+      // clear continues it, layer in the b2b sting.
+      if (b2bBefore && events.lineClear.score.newB2b && (tspin !== 'none' || linesCleared === 4)) {
+        audio.play('b2b');
+      }
+    } else if (state.status !== 'gameover') {
+      audio.play('lock');
+    }
     if (events.scoreDelta > 0 || events.lineClear) notify();
     if (state.status === 'gameover') {
+      audio.play('gameover');
       persistHigh();
       notify();
       return;
@@ -221,6 +254,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     lockState.state = createLockState();
     const top = spawnFromBag(state, bag, cfg);
     if (top !== null) {
+      audio.play('gameover');
       persistHigh();
       notify();
     } else {
@@ -273,7 +307,10 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
 
     if (onPressed('KeyC') || onPressed('ShiftLeft') || onPressed('ShiftRight')) {
       const swapped = tryHold(state, bag, cfg);
-      if (swapped) lockState.state = createLockState();
+      if (swapped) {
+        lockState.state = createLockState();
+        audio.play('hold');
+      }
     }
   };
 
@@ -401,6 +438,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       playMount.destroy();
       sideMount.destroy();
       wrap.remove();
+      audio.destroy();
       subscribers.clear();
     },
     get state(): GameState {
@@ -422,6 +460,12 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       };
       cb(snap);
       return () => subscribers.delete(cb);
+    },
+    toggleMute(): boolean {
+      return audio.toggleMute();
+    },
+    get muted(): boolean {
+      return audio.muted;
     },
   };
 }

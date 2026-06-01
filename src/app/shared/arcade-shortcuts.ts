@@ -11,6 +11,10 @@ import { Router } from '@angular/router';
  * - `Backslash` → toggle arcade-mode (fullscreen board)
  * - `KeyH` / `?` → help dialog (handled in components)
  * - `KeyC`  → credits dialog (handled in components)
+ * - `KeyM`  → toggle audio mute. Persisted globally under
+ *   `arcade.audio.muted`; the binding lives in each game's component.
+ *   Termo binds it to uppercase `M` (Shift+M) so the lowercase letter can
+ *   still be typed as part of a guess.
  *
  * Components call `tryNavigate()` from their @HostListener. The optional
  * `exclude` set lets a game opt out of specific digits — Snake uses 1/2/3

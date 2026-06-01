@@ -36,7 +36,7 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       <div #host class="host"></div>
       <p class="hint">
         Arrows move &middot; Z/X rotate &middot; A 180° &middot; Space hard drop &middot; Down soft drop
-        &middot; Shift hold &middot; P pause &middot; Esc pause/quit &middot; H help &middot; C credits
+        &middot; Shift hold &middot; P pause &middot; Esc pause/quit &middot; M mute &middot; H help &middot; C credits
         &middot; \\ fullscreen &middot; 0–4 navigate
       </p>
       <app-help-dialog [(open)]="helpOpen" title="Tetris">
@@ -63,6 +63,7 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
           <tr><td><kbd>0</kbd> – <kbd>4</kbd></td><td>Home, Pac-Man, Tetris, Snake, Termo</td></tr>
           <tr><td><kbd>\\</kbd></td><td>Toggle arcade mode (fullscreen board)</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to home</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Mute / unmute sound effects</td></tr>
           <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
           <tr><td><kbd>C</kbd></td><td>Credits</td></tr>
         </table>
@@ -234,6 +235,14 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
     if (ev.key === '\\') {
       ev.preventDefault();
       this.arcadeMode.update((v) => !v);
+      return;
+    }
+    // M mutes audio. Tetris doesn't reserve M (the rotation/lock keys are
+    // X/Z/A/C/Shift/Arrows/Space), so a plain keydown is fine.
+    if (ev.key === 'm' || ev.key === 'M') {
+      ev.preventDefault();
+      const muted = this.game?.toggleMute() ?? false;
+      console.info(`Audio ${muted ? 'muted' : 'unmuted'}`);
       return;
     }
     if (ev.key === 'Escape') {

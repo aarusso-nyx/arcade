@@ -1,13 +1,17 @@
 import {
+  createAudio,
   createKeyboard,
   createLoop,
   createStorage,
   mountCanvas,
   mulberry32,
+  registerSounds,
+  type Audio,
   type CanvasMount,
   type Keyboard,
   type Loop,
 } from '../../../core';
+import { PACMAN_SFX } from './audio';
 import {
   CANVAS_H,
   CANVAS_W,
@@ -46,6 +50,8 @@ export interface PacmanGame {
   readonly state: GameState;
   readonly highScore: number;
   onScoreChange(cb: (s: GameState) => void): () => void;
+  toggleMute(): boolean;
+  readonly muted: boolean;
 }
 
 export interface PacmanOptions {
@@ -58,6 +64,11 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
   const storage = createStorage(STORAGE_NS);
   const highKey = 'highScore';
   let highScore = storage.get<number>(highKey, 0);
+  const audio: Audio = createAudio();
+  registerSounds(audio, PACMAN_SFX);
+  // Alternates between pelletA / pelletB on each pellet eaten — the
+  // canonical "waka-waka" rhythm.
+  let pelletParity = 0;
 
   const maze = parseMaze();
   if (maze.pelletCount !== TOTAL_PELLETS) {
@@ -128,6 +139,7 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
       const f = createGhost(id);
       Object.assign(g, f);
     });
+    pelletParity = 0;
     notify();
   };
 
@@ -139,6 +151,15 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
     const prevLives = game.lives;
     const prevLevel = game.level;
     const events = tickWorld(world);
+    if (events.atePellet) {
+      audio.play(pelletParity === 0 ? 'pelletA' : 'pelletB');
+      pelletParity ^= 1;
+    }
+    if (events.atePowerPellet) audio.play('power');
+    if (events.ateGhost) audio.play('eatGhost');
+    if (events.ateFruit) audio.play('fruit');
+    if (events.extraLifeAwarded) audio.play('extraLife');
+    if (events.died) audio.play('death');
     if (game.score > highScore) {
       highScore = game.score;
       game.highScore = highScore;
@@ -190,6 +211,7 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
       loop.stop();
       keyboard.detach();
       mount.destroy();
+      audio.destroy();
       subscribers.clear();
     },
     get state(): GameState {
@@ -202,6 +224,12 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
       subscribers.add(cb);
       cb(world.game);
       return () => subscribers.delete(cb);
+    },
+    toggleMute(): boolean {
+      return audio.toggleMute();
+    },
+    get muted(): boolean {
+      return audio.muted;
     },
   };
 }

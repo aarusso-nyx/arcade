@@ -1,13 +1,17 @@
 import {
+  createAudio,
   createLoop,
   createKeyboard,
   createStorage,
   mountCanvas,
   mulberry32,
+  registerSounds,
+  type Audio,
   type Loop,
   type Keyboard,
   type CanvasMount,
 } from '../../../core';
+import { SNAKE_SFX } from './audio';
 import { DEFAULT_CONFIG, SnakeConfig, tickIntervalFor } from './config';
 import { DirectionQueue, KEY_TO_DIRECTION, PREVENT_DEFAULT_CODES } from './input';
 import { render } from './renderer';
@@ -24,6 +28,9 @@ export interface SnakeGame {
   readonly highScore: number;
   /** Subscribe to score / high-score changes. Returns an unsubscribe fn. */
   onScoreChange(cb: (score: number, highScore: number) => void): () => void;
+  /** Toggle global mute. Returns the new muted state. */
+  toggleMute(): boolean;
+  readonly muted: boolean;
 }
 
 export interface SnakeOptions extends Partial<SnakeConfig> {
@@ -38,6 +45,8 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
   const seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
   const rng = mulberry32(seed);
   const storage = createStorage(STORAGE_NS);
+  const audio: Audio = createAudio();
+  registerSounds(audio, SNAKE_SFX);
 
   let state: SnakeState = createInitialState(cfg, rng);
   let bestScoreKey = `bestScore.${cfg.mode}`;
@@ -117,7 +126,18 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     if (state.status !== 'playing') return;
     const nextDir = queue.shift();
     const before = state.foodsEaten;
+    const lengthBefore = state.body.length;
     const events = step(state, nextDir, performance.now(), rng, cfg);
+    if (events.ateFood) audio.play('chomp');
+    if (events.ateBonus) audio.play('bonus');
+    // Length-cross at multiples of 10 (matches scoring logic in state.ts).
+    if (
+      events.ateFood &&
+      Math.floor(state.body.length / 10) > Math.floor(lengthBefore / 10)
+    ) {
+      audio.play('lengthBonus');
+    }
+    if (events.died) audio.play('death');
     if (events.scoreDelta > 0 && state.score > highScore) {
       highScore = state.score;
       storage.set(bestScoreKey, highScore);
@@ -160,6 +180,7 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
       loop.stop();
       keyboard.detach();
       mount.destroy();
+      audio.destroy();
       subscribers.clear();
     },
     get state(): SnakeState {
@@ -172,6 +193,12 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
       subscribers.add(cb);
       cb(state.score, highScore);
       return () => subscribers.delete(cb);
+    },
+    toggleMute(): boolean {
+      return audio.toggleMute();
+    },
+    get muted(): boolean {
+      return audio.muted;
     },
   };
 }

@@ -177,6 +177,9 @@ export interface World {
 export interface TickEvents {
   ateGhost: boolean;
   ateFruit: boolean;
+  /** Plain pellet eaten this tick. Used to drive the waka-waka audio tick. */
+  atePellet: boolean;
+  atePowerPellet: boolean;
   died: boolean;
   levelCleared: boolean;
   extraLifeAwarded: boolean;
@@ -185,6 +188,8 @@ export interface TickEvents {
 const emptyEvents = (): TickEvents => ({
   ateGhost: false,
   ateFruit: false,
+  atePellet: false,
+  atePowerPellet: false,
   died: false,
   levelCleared: false,
   extraLifeAwarded: false,
@@ -575,6 +580,7 @@ function eatPellet(world: World, events: TickEvents): void {
     world.game.pelletsEatenThisLevel++;
     world.game.idleReleaseTicks = 0;
     bumpHouseCounter(world);
+    events.atePellet = true;
   } else if (cell === 2) {
     world.pelletGrid[idx] = 0;
     world.game.score += POWER_PELLET_POINTS;
@@ -582,6 +588,7 @@ function eatPellet(world: World, events: TickEvents): void {
     world.game.pelletsEatenThisLevel++;
     world.game.idleReleaseTicks = 0;
     bumpHouseCounter(world);
+    events.atePowerPellet = true;
     const fright = getFrightTable(world.game.level);
     if (fright.seconds > 0) {
       // Reset chain.
