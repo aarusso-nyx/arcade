@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  HostBinding,
   inject,
   OnDestroy,
   signal,
@@ -9,6 +10,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
+import { tryNavigate } from '../../shared/arcade-shortcuts';
 import { createTermoGame, type TermoGame } from './game';
 import { normalize } from './normalize';
 import {
@@ -76,12 +78,45 @@ const TOAST_DURATION_MS = 2000;
           <button
             type="button"
             class="help-btn"
+            (click)="creditsOpen.set(true)"
+            aria-label="Créditos"
+            title="Créditos (Shift+C)"
+          >©</button>
+          <button
+            type="button"
+            class="help-btn"
             (click)="helpOpen.set(true)"
             aria-label="Instruções"
             title="Instruções (?)"
           >?</button>
         </div>
       </header>
+
+      <app-help-dialog [(open)]="creditsOpen" title="Créditos — Termo">
+        <p>
+          <strong><a href="https://term.ooo" target="_blank" rel="noopener">Termo</a></strong>
+          é a variante brasileira do Wordle, criado por
+          <strong><a href="https://github.com/fserb/term" target="_blank" rel="noopener">Fernando Serboncini</a></strong>
+          em term.ooo (2022), inspirado pelo
+          <strong><a href="https://www.nytimes.com/games/wordle/index.html" target="_blank" rel="noopener">Wordle</a></strong>
+          de <a href="https://en.wikipedia.org/wiki/Josh_Wardle" target="_blank" rel="noopener">Josh Wardle</a>
+          (2021).
+        </p>
+        <p>
+          Esta implementação usa um avaliador de duas passadas (correto / presente
+          / ausente, com a regra clássica para letras repetidas), normalização de
+          acentos (NFD + remoção de diacríticos), modo Diário determinístico,
+          sequências por comprimento, e a animação de revelação em flip.
+        </p>
+        <p>
+          Lista de palavras portada de um dicionário pt-BR de 5 letras de uso
+          permissivo. Construído por
+          <a href="mailto:aarusso@nyxk.com.br" target="_blank" rel="noopener">Antonio Augusto Russo</a>
+          na NYX Knowledge como exemplo de codificação agêntica com IA.
+          Veja <code>docs/termo/engineering.md</code> ou o
+          <a href="https://github.com/aarusso-nyx/arcade" target="_blank" rel="noopener">repositório no GitHub</a>.
+        </p>
+      </app-help-dialog>
 
       <app-help-dialog [(open)]="helpOpen" title="Termo">
         <h4>Objetivo</h4>
@@ -143,8 +178,7 @@ const TOAST_DURATION_MS = 2000;
           class="board"
           role="grid"
           [attr.aria-label]="boardAriaLabel()"
-          [style.--cols]="wordLength()"
-          [style.--rows]="maxAttempts()"
+          [style.grid-template-rows]="'repeat(' + maxAttempts() + ', 1fr)'"
           [style.aspect-ratio]="wordLength() + ' / ' + maxAttempts()"
         >
           @for (row of boardRows(); track $index; let r = $index) {
@@ -152,6 +186,7 @@ const TOAST_DURATION_MS = 2000;
               class="row"
               role="row"
               [class.shaking]="shakingRow() === r"
+              [style.grid-template-columns]="'repeat(' + wordLength() + ', 1fr)'"
             >
               @for (tile of row; track $index; let c = $index) {
                 <div
@@ -313,15 +348,17 @@ const TOAST_DURATION_MS = 2000;
 
     .board {
       display: grid;
-      grid-template-rows: repeat(var(--rows, 6), 1fr);
+      /* grid-template-rows and aspect-ratio are bound inline per the
+         current wordLength/maxAttempts — Safari has issues resolving CSS
+         custom-property values inside repeat(), so we set the literal
+         repeat() string directly. */
       gap: 6px;
       width: 100%;
       max-width: 330px;
-      /* aspect-ratio is set inline based on wordLength / maxAttempts. */
     }
     .row {
       display: grid;
-      grid-template-columns: repeat(var(--cols, 5), 1fr);
+      /* grid-template-columns bound inline (see board comment). */
       gap: 6px;
     }
     .row.shaking { animation: shake 400ms ease-in-out; }
@@ -329,6 +366,9 @@ const TOAST_DURATION_MS = 2000;
     .tile {
       position: relative;
       perspective: 600px;
+      -webkit-perspective: 600px;
+      transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d;
       aspect-ratio: 1 / 1;
       font-size: 2rem;
       font-weight: 700;
@@ -341,6 +381,9 @@ const TOAST_DURATION_MS = 2000;
       align-items: center;
       justify-content: center;
       backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      transform: translateZ(0); /* Safari flip-animation rendering fix */
+      -webkit-transform: translateZ(0);
       transition: transform 500ms ease-in-out, background-color 200ms, border-color 200ms;
       border: 2px solid var(--tile-border);
       box-sizing: border-box;
@@ -459,6 +502,12 @@ const TOAST_DURATION_MS = 2000;
       color: #8a8f99;
     }
     .error { color: #ff7a7a; }
+
+    /* Arcade / fullscreen mode: hide the chrome, take over the viewport. */
+    :host.arcade { position: fixed; inset: 0; z-index: 9999; background: var(--nyx-bg); }
+    :host.arcade .page { max-width: none; height: 100vh; padding: 1rem; }
+    :host.arcade header,
+    :host.arcade .hint { display: none; }
   `,
 })
 export class TermoComponent implements AfterViewInit, OnDestroy {
@@ -470,7 +519,12 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   private bouncingTimer: number | null = null;
 
   protected readonly helpOpen = signal(false);
+  protected readonly creditsOpen = signal(false);
+  protected readonly arcadeMode = signal(false);
   private readonly router = inject(Router);
+
+  @HostBinding('class.arcade')
+  protected get arcadeClass(): boolean { return this.arcadeMode(); }
 
   constructor() {
     const route = inject(ActivatedRoute);
@@ -705,27 +759,50 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   }
 
   private onPhysicalKey(e: KeyboardEvent): void {
-    // Help toggle: ? key works regardless of game status. (Not 'H' — H is a
-    // legitimate letter input in Termo, so binding it to help would break
-    // typing words containing H.)
-    if (e.key === '?') {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Help toggle: ? key works regardless of game status. (Not lowercase 'h' —
+    // H is a legitimate letter input in Termo, so binding it to help would
+    // break typing words containing H. We use ? and uppercase H/C.)
+    if (e.key === '?' || e.key === 'H') {
       e.preventDefault();
       this.helpOpen.update((v) => !v);
       return;
     }
-    // Esc: quit straight to the arcade home (Termo has no pause state, so
-    // there's nothing to pause to first).
+    // Credits: only on uppercase C (Shift+C) so lowercase c can still be
+    // typed in words.
+    if (e.key === 'C') {
+      e.preventDefault();
+      this.creditsOpen.update((v) => !v);
+      return;
+    }
+    // Backslash toggles arcade / fullscreen mode.
+    if (e.key === '\\') {
+      e.preventDefault();
+      this.arcadeMode.update((v) => !v);
+      return;
+    }
+    // Esc: close arcade mode first, otherwise quit to the arcade home
+    // (Termo has no pause state to fall through to).
     if (e.key === 'Escape') {
       e.preventDefault();
+      if (this.arcadeMode()) {
+        this.arcadeMode.set(false);
+        return;
+      }
       this.router.navigate(['/']);
+      return;
+    }
+    // Global navigation digits 0-4. Termo only consumes digit keys via this
+    // path; the reducer rejects non-letters, so it's safe to intercept.
+    if (tryNavigate(this.router, e.code)) {
+      e.preventDefault();
       return;
     }
     // If the help dialog is open, swallow letter/Enter/Backspace events so
     // typing inside the dialog doesn't dispatch into the game.
-    if (this.helpOpen()) return;
+    if (this.helpOpen() || this.creditsOpen()) return;
     if (!this.game) return;
     if (this.game.state().status !== 'playing') return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'Enter') {
       this.dispatch({ type: 'SUBMIT' });
       return;

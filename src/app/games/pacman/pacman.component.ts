@@ -11,37 +11,34 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
+import { tryNavigate } from '../../shared/arcade-shortcuts';
 import { createPacmanGame, type PacmanGame } from './game';
 
 @Component({
   selector: 'app-pacman',
   imports: [RouterLink, HelpDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.arcade]': 'arcadeMode()' },
   template: `
     <section class="page">
       <header>
         <a routerLink="/">&larr; Arcade</a>
         <h2 class="pixel">Pac-Man</h2>
         <div class="scores">
-          <span class="label">Score</span>
-          <span class="value">{{ score() }}</span>
-          <span class="label">High</span>
-          <span class="value">{{ highScore() }}</span>
-          <span class="label">Lives</span>
-          <span class="value">{{ lives() }}</span>
-          <span class="label">Level</span>
-          <span class="value">{{ level() }}</span>
-          <button
-            type="button"
-            class="help-btn"
-            (click)="helpOpen.set(true)"
-            aria-label="Instructions"
-            title="Instructions (H or ?)"
-          >?</button>
+          <span class="label">Score</span><span class="value">{{ score() }}</span>
+          <span class="label">High</span><span class="value">{{ highScore() }}</span>
+          <span class="label">Lives</span><span class="value">{{ lives() }}</span>
+          <span class="label">Level</span><span class="value">{{ level() }}</span>
+          <button type="button" class="icon-btn" (click)="creditsOpen.set(true)" aria-label="Credits" title="Credits (C)">©</button>
+          <button type="button" class="icon-btn" (click)="helpOpen.set(true)" aria-label="Help" title="Help (H or ?)">?</button>
         </div>
       </header>
       <div #host class="host"></div>
-      <p class="hint">Arrows or WASD to turn. P or Space pause. Enter to restart. Esc pause / quit. H or ? for help.</p>
+      <p class="hint">
+        Arrows / WASD turn &middot; P / Space pause &middot; Enter restart &middot;
+        Esc pause/quit &middot; H help &middot; C credits &middot;
+        \\ fullscreen &middot; 0–4 navigate
+      </p>
       <app-help-dialog [(open)]="helpOpen" title="Pac-Man">
         <h4>Goal</h4>
         <p>
@@ -50,18 +47,20 @@ import { createPacmanGame, type PacmanGame } from './game';
           slightly faster version of the same maze. You start with <strong>3 lives</strong> and
           earn a bonus life at <strong>10,000 points</strong>.
         </p>
-        <h4>Controls</h4>
+        <h4>Pac-Man controls</h4>
         <table>
           <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> / <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Change direction</td></tr>
           <tr><td><kbd>P</kbd> / <kbd>Space</kbd></td><td>Pause / resume</td></tr>
-          <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to the arcade home</td></tr>
           <tr><td><kbd>Enter</kbd></td><td>Start, or restart from game over</td></tr>
-          <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
         </table>
-        <p>
-          Direction inputs are buffered — press a turn while between intersections and Pac-Man
-          will take it at the next legal opportunity.
-        </p>
+        <h4>Arcade-wide</h4>
+        <table>
+          <tr><td><kbd>0</kbd> – <kbd>4</kbd></td><td>Home, Pac-Man, Tetris, Snake, Termo</td></tr>
+          <tr><td><kbd>\\</kbd></td><td>Toggle arcade mode (fullscreen board)</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to home</td></tr>
+          <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
+          <tr><td><kbd>C</kbd></td><td>Credits</td></tr>
+        </table>
         <h4>Scoring</h4>
         <table>
           <tr><td>Pellet</td><td>10</td></tr>
@@ -75,21 +74,41 @@ import { createPacmanGame, type PacmanGame } from './game';
           <strong>Pinky</strong> (pink) aims 4 tiles ahead of where you're facing.
           <strong>Inky</strong> (cyan) flanks using Blinky's position.
           <strong>Clyde</strong> (orange) chases when far, retreats when close (within 8 tiles).
+          Power pellets make them <strong>frightened</strong> — blue and edible.
+        </p>
+      </app-help-dialog>
+      <app-help-dialog [(open)]="creditsOpen" title="Credits — Pac-Man">
+        <p>
+          <a href="https://en.wikipedia.org/wiki/Pac-Man" target="_blank" rel="noopener">Pac-Man</a>
+          was created by
+          <a href="https://en.wikipedia.org/wiki/Toru_Iwatani" target="_blank" rel="noopener">Tōru Iwatani</a>
+          at <a href="https://en.wikipedia.org/wiki/Namco" target="_blank" rel="noopener">Namco</a> in 1980.
         </p>
         <p>
-          Eat a power pellet to make them <strong>frightened</strong> — they turn blue and become
-          edible for a few seconds. The chain bonus resets when frightened mode ends.
+          This implementation follows the canonical arcade behaviour as documented in
+          Jamey Pittman's <a href="https://pacman.holenet.info/" target="_blank" rel="noopener">Pac-Man Dossier</a>:
+          31×28 maze, per-level speed table with Elroy thresholds, scatter / chase phase
+          schedule, two-tier ghost-house release (personal + global counter + idle timer),
+          and the four ghost AIs at their full fidelity — including Pinky's famous
+          up-direction overflow bug and Inky's flank-via-Blinky formula.
+        </p>
+        <p>
+          Built by
+          <a href="mailto:aarusso@nyxk.com.br" target="_blank" rel="noopener">Antonio Augusto Russo</a>
+          at NYX Knowledge as a worked example of AI-agentic coding.
+          See <code>docs/pacman/engineering.md</code> or the
+          <a href="https://github.com/aarusso-nyx/arcade" target="_blank" rel="noopener">GitHub repository</a>.
         </p>
       </app-help-dialog>
     </section>
   `,
   styles: `
     .page {
-      max-width: 720px;
+      max-width: 820px;
       margin: 0 auto;
       padding: 1.5rem;
       font-family: system-ui, sans-serif;
-      color: #e6e6e6;
+      color: var(--nyx-fg);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -105,42 +124,69 @@ import { createPacmanGame, type PacmanGame } from './game';
     h2 { margin: 0; font-size: 1.1rem; }
     h2.pixel { letter-spacing: 0.06em; color: var(--nyx-brand-hi); }
     a { color: inherit; text-decoration: none; opacity: 0.8; }
-    a:hover { opacity: 1; }
+    a:hover { opacity: 1; color: var(--nyx-brand-hi); }
     .scores {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 0.5rem 0.75rem;
+      gap: 0.4rem 0.6rem;
+      justify-content: flex-end;
       font-variant-numeric: tabular-nums;
     }
-    .scores .label { color: #8a8f99; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
-    .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: #ffd24a; line-height: 1; }
-    .help-btn {
+    .scores .label { color: var(--nyx-fg-dim); font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
+    .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--nyx-accent); line-height: 1; }
+    .icon-btn {
       background: transparent;
       color: inherit;
-      border: 1px solid currentColor;
+      border: 1px solid var(--nyx-border);
       border-radius: 999px;
       width: 1.75rem;
       height: 1.75rem;
       font: inherit;
       font-weight: 600;
       cursor: pointer;
-      opacity: 0.6;
+      opacity: 0.65;
+      transition: border-color 120ms, color 120ms, opacity 120ms;
     }
-    .help-btn:hover { opacity: 1; }
+    .icon-btn:hover { opacity: 1; border-color: var(--nyx-brand); color: var(--nyx-brand-hi); }
     .host {
       width: 100%;
-      max-width: 560px;
       aspect-ratio: 224 / 288;
+      /* Grow to fill viewport while respecting aspect ratio. */
+      max-width: min(80vmin * 224 / 288, calc(100vh - 200px) * 224 / 288, 1200px);
+      max-height: calc(100vh - 200px);
       background: #000;
+      border: 2px solid var(--nyx-brand);
       border-radius: 0.5rem;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
+      margin: 0 auto;
+      box-shadow: 0 0 0 1px var(--nyx-brand-deep);
     }
-    .hint { color: #8a8f99; font-size: 0.85rem; margin: 0; text-align: center; }
-    :host { display: block; min-height: 100vh; background: #14171c; }
+    .hint { color: var(--nyx-fg-dim); font-size: 0.78rem; margin: 0; text-align: center; line-height: 1.5; }
+    :host { display: block; min-height: 100vh; background: var(--nyx-bg); }
+
+    :host.arcade {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+    }
+    :host.arcade .page {
+      max-width: none;
+      padding: 0;
+      gap: 0;
+      height: 100vh;
+      width: 100vw;
+      justify-content: center;
+    }
+    :host.arcade header,
+    :host.arcade .hint { display: none; }
+    :host.arcade .host {
+      max-width: min(100vw, 100vh * 224 / 288);
+      max-height: 100vh;
+    }
   `,
 })
 export class PacmanComponent implements AfterViewInit, OnDestroy {
@@ -153,6 +199,8 @@ export class PacmanComponent implements AfterViewInit, OnDestroy {
   protected readonly lives = signal(0);
   protected readonly level = signal(1);
   protected readonly helpOpen = signal(false);
+  protected readonly creditsOpen = signal(false);
+  protected readonly arcadeMode = signal(false);
 
   private readonly router = inject(Router);
 
@@ -163,20 +211,38 @@ export class PacmanComponent implements AfterViewInit, OnDestroy {
 
   @HostListener('window:keydown', ['$event'])
   protected onWindowKey(ev: KeyboardEvent): void {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     if (ev.key === 'h' || ev.key === 'H' || ev.key === '?') {
       ev.preventDefault();
       this.helpOpen.update((v) => !v);
       return;
     }
+    if (ev.key === 'c' || ev.key === 'C') {
+      ev.preventDefault();
+      this.creditsOpen.update((v) => !v);
+      return;
+    }
+    if (ev.key === '\\') {
+      ev.preventDefault();
+      this.arcadeMode.update((v) => !v);
+      return;
+    }
     if (ev.key === 'Escape') {
       ev.preventDefault();
-      // Pacman uses game.state.phase, not status.
+      if (this.arcadeMode()) {
+        this.arcadeMode.set(false);
+        return;
+      }
       const phase = this.game?.state.phase;
       if (phase === 'playing' || phase === 'ready') {
         this.game!.pause();
       } else {
         this.router.navigate(['/']);
       }
+      return;
+    }
+    if (tryNavigate(this.router, ev.code)) {
+      ev.preventDefault();
     }
   }
 

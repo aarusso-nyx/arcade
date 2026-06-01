@@ -4,20 +4,26 @@ import type { SnakeState } from './types';
 
 const COLORS = {
   bg: '#0b0d10',
-  grid: '#15191e',
+  grid: '#1e3a4a',       // brand-deep tint — clearly visible against the bg
+  gridMajor: '#27566d',  // brighter line every 5 cells for orientation
   food: '#e94e4e',
   bonus: '#ffd24a',
   body: '#3ec46d',
   head: '#5be089',
   hudFg: '#e6e6e6',
   hudDim: '#8a8f99',
+  hudValue: '#ffd24a', // arcade yellow for live numbers
+  hudBg: 'rgba(11, 13, 16, 0.55)',
   overlayBg: 'rgba(11, 13, 16, 0.78)',
 } as const;
+
+const pad = (n: number, w: number): string => n.toString().padStart(w, '0');
 
 export function render(
   ctx: CanvasRenderingContext2D,
   state: SnakeState,
   cfg: SnakeConfig,
+  hud: { highScore: number },
   nowMs: number,
   alpha = 0,
 ): void {
@@ -39,6 +45,11 @@ export function render(
   const drawAlpha = state.status === 'playing' ? Math.max(0, Math.min(1, alpha)) : 0;
   drawSnake(ctx, state, cfg, drawAlpha);
 
+  // In-canvas HUD — drawn ON TOP of the grid/snake so it stays legible even
+  // when the snake passes through the top row. Translates "score/best/length"
+  // from the chrome HUD into the play area, Pac-Man style.
+  drawHud(ctx, state, hud.highScore, cfg);
+
   if (state.status === 'paused') drawOverlay(ctx, w, h, 'Paused', 'Space to resume');
   else if (state.status === 'gameover') {
     const cause = state.deathCause === 'wall' ? 'Hit a wall' : 'Bit yourself';
@@ -50,17 +61,72 @@ export function render(
   }
 }
 
+function drawHud(
+  ctx: CanvasRenderingContext2D,
+  state: SnakeState,
+  highScore: number,
+  cfg: SnakeConfig,
+): void {
+  const w = cfg.cols * cfg.cellSize;
+  // Bg band makes the values readable when the snake or food sits underneath.
+  ctx.fillStyle = COLORS.hudBg;
+  ctx.fillRect(0, 0, w, 20);
+
+  ctx.font = '6px monospace';
+  ctx.textBaseline = 'top';
+
+  // SCORE (left).
+  ctx.fillStyle = COLORS.hudDim;
+  ctx.textAlign = 'left';
+  ctx.fillText('SCORE', 6, 2);
+  ctx.fillStyle = COLORS.hudValue;
+  ctx.fillText(pad(state.score, 6), 6, 10);
+
+  // HIGH (centre).
+  ctx.fillStyle = COLORS.hudDim;
+  ctx.textAlign = 'center';
+  ctx.fillText('HIGH', w / 2, 2);
+  ctx.fillStyle = COLORS.hudValue;
+  ctx.fillText(pad(highScore, 6), w / 2, 10);
+
+  // LENGTH (right).
+  ctx.fillStyle = COLORS.hudDim;
+  ctx.textAlign = 'right';
+  ctx.fillText('LENGTH', w - 6, 2);
+  ctx.fillStyle = COLORS.hudValue;
+  ctx.fillText(pad(state.body.length, 3), w - 6, 10);
+}
+
 function drawGrid(ctx: CanvasRenderingContext2D, cfg: SnakeConfig): void {
+  const w = cfg.cols * cfg.cellSize;
+  const h = cfg.rows * cfg.cellSize;
+
+  // Minor lines (every cell).
   ctx.strokeStyle = COLORS.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let c = 1; c < cfg.cols; c++) {
+    if (c % 5 === 0) continue; // major lines drawn separately
     ctx.moveTo(c * cfg.cellSize + 0.5, 0);
-    ctx.lineTo(c * cfg.cellSize + 0.5, cfg.rows * cfg.cellSize);
+    ctx.lineTo(c * cfg.cellSize + 0.5, h);
   }
   for (let r = 1; r < cfg.rows; r++) {
+    if (r % 5 === 0) continue;
     ctx.moveTo(0, r * cfg.cellSize + 0.5);
-    ctx.lineTo(cfg.cols * cfg.cellSize, r * cfg.cellSize + 0.5);
+    ctx.lineTo(w, r * cfg.cellSize + 0.5);
+  }
+  ctx.stroke();
+
+  // Major lines (every 5 cells) — brighter, helps gauge distance to the wall.
+  ctx.strokeStyle = COLORS.gridMajor;
+  ctx.beginPath();
+  for (let c = 5; c < cfg.cols; c += 5) {
+    ctx.moveTo(c * cfg.cellSize + 0.5, 0);
+    ctx.lineTo(c * cfg.cellSize + 0.5, h);
+  }
+  for (let r = 5; r < cfg.rows; r += 5) {
+    ctx.moveTo(0, r * cfg.cellSize + 0.5);
+    ctx.lineTo(w, r * cfg.cellSize + 0.5);
   }
   ctx.stroke();
 }

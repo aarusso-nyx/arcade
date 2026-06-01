@@ -53,7 +53,6 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     logicalHeight: cfg.rows * cfg.cellSize,
     scaling: 'fit',
     background: '#0b0d10',
-    border: '1px solid #2a2f38',
   });
 
   const keyboard: Keyboard = createKeyboard({
@@ -84,11 +83,15 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
       highScore = storage.get<number>(bestScoreKey, 0);
       beginRun();
     }
-    // 1/2/3: adjust the input queue depth. Smaller = snappier but inputs drop
-    // sooner; larger = more forgiving but inputs may feel "remembered too long".
-    if (keyboard.consumePress('Digit1')) queue.resize(1);
-    if (keyboard.consumePress('Digit2')) queue.resize(2);
-    if (keyboard.consumePress('Digit3')) queue.resize(3);
+    // [ and ]: adjust the input queue depth (clamped to [1, 3]). Smaller =
+    // snappier but inputs drop sooner; larger = more forgiving but inputs
+    // may feel "remembered too long". 1/2/3 are reserved for global navigation.
+    if (keyboard.consumePress('BracketLeft')) {
+      queue.resize(Math.max(1, queue.capacity - 1));
+    }
+    if (keyboard.consumePress('BracketRight')) {
+      queue.resize(Math.min(3, queue.capacity + 1));
+    }
   };
 
   const beginRun = (): void => {
@@ -128,7 +131,11 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
 
   const draw = (alpha = lastAlpha): void => {
     lastAlpha = alpha;
-    render(mount.ctx, state, cfg, performance.now(), alpha);
+    // beginFrame clears the canvas backing store AND applies ctx.scale, so
+    // the renderer's logical (0..cols*cellSize, 0..rows*cellSize) drawing
+    // fills the full canvas regardless of the host's actual size.
+    mount.beginFrame('#0b0d10');
+    render(mount.ctx, state, cfg, { highScore }, performance.now(), alpha);
   };
 
   const loop: Loop = createLoop({

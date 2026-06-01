@@ -87,6 +87,34 @@ import {
     }
     .content :first-child { margin-top: 0; }
     .content :last-child { margin-bottom: 0; }
+    /* Pretty link treatment: a coloured pill with a soft gradient underline
+       that fills on hover. External-link links also get a subtle ↗ marker. */
+    .content a {
+      color: var(--nyx-brand-hi);
+      text-decoration: none;
+      font-weight: 600;
+      padding: 0 0.15em;
+      background-image: linear-gradient(var(--nyx-brand) 0 100%);
+      background-position: 0 100%;
+      background-repeat: no-repeat;
+      background-size: 100% 0.12em;
+      transition: background-size 180ms ease, color 180ms ease;
+      border-radius: 2px;
+    }
+    .content a:hover {
+      color: var(--nyx-accent);
+      background-size: 100% 100%;
+    }
+    .content a:focus-visible {
+      outline: 2px solid var(--nyx-brand-hi);
+      outline-offset: 2px;
+    }
+    .content a[href^="http"]::after,
+    .content a[href^="mailto"]::after {
+      content: " \\2197"; /* ↗ — escaped for SCSS preprocessor */
+      font-size: 0.75em;
+      opacity: 0.6;
+    }
     .content h4 {
       margin: 1rem 0 0.4rem;
       font-size: 0.85rem;

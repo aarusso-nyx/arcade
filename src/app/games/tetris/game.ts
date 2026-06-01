@@ -121,14 +121,12 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     logicalHeight: playHeightPx,
     scaling: 'fit',
     background: '#0b0d10',
-    border: '1px solid #2a2f38',
   });
   const sideMount: CanvasMount = mountCanvas(sideHost, {
     logicalWidth: sideWidthPx,
     logicalHeight: sideHeightPx,
     scaling: 'fit',
     background: '#14171c',
-    border: '1px solid #2a2f38',
   });
 
   // DAS state.
