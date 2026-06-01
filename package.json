@@ -15,6 +15,10 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "npm": ">=11.0.0 <12.0.0"
+  },
   "prettier": {
     "printWidth": 100,
     "singleQuote": true,
