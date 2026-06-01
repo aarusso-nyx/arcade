@@ -15,6 +15,7 @@ import { SNAKE_SFX } from './audio';
 import { DEFAULT_CONFIG, SnakeConfig, tickIntervalFor } from './config';
 import { DirectionQueue, KEY_TO_DIRECTION, PREVENT_DEFAULT_CODES } from './input';
 import { render } from './renderer';
+import { loadPixelFont } from './sprites';
 import { createInitialState, step } from './state';
 import type { SnakeState } from './types';
 
@@ -167,6 +168,7 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
 
   return {
     start(): void {
+      void loadPixelFont();
       keyboard.attach();
       loop.start();
       draw();

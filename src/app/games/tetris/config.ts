@@ -21,6 +21,7 @@ export interface TetrisConfig {
   // Storage key
   storageKey: string;
   // Features
+  ghostEnabled: boolean;
   enableT180: boolean;
   enablePartialLockOut: boolean;
 }
@@ -41,6 +42,7 @@ export const DEFAULT_CONFIG: TetrisConfig = {
   maxGravityRowsPerTick: 20,
   tickIntervalMs: 1000 / 60,
   storageKey: 'highScore',
+  ghostEnabled: true,
   enableT180: true,
   enablePartialLockOut: false,
 };

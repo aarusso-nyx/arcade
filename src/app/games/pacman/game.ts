@@ -29,6 +29,7 @@ import {
   render,
   type MazeCache,
 } from './renderer';
+import { loadPixelFont } from './sprites';
 import {
   buildPelletGrid,
   createGhost,
@@ -59,6 +60,8 @@ export interface PacmanOptions {
 }
 
 export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): PacmanGame {
+  void loadPixelFont();
+
   const seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
   const rng = mulberry32(seed);
   const storage = createStorage(STORAGE_NS);

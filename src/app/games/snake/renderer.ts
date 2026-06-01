@@ -1,11 +1,13 @@
 import { DELTA } from '../../../core';
 import type { SnakeConfig } from './config';
+import { pixelFontFamily } from './sprites';
 import type { SnakeState } from './types';
 
 const COLORS = {
   bg: '#0b0d10',
   grid: '#1e3a4a',       // brand-deep tint — clearly visible against the bg
   gridMajor: '#27566d',  // brighter line every 5 cells for orientation
+  gridBorder: '#8a8f99',
   food: '#e94e4e',
   bonus: '#ffd24a',
   body: '#3ec46d',
@@ -18,6 +20,10 @@ const COLORS = {
 } as const;
 
 const pad = (n: number, w: number): string => n.toString().padStart(w, '0');
+const HUD_HEIGHT = 28;
+const HUD_LABEL_FONT_SIZE = 6;
+const HUD_VALUE_FONT_SIZE = 8;
+const HUD_PAD_X = 8;
 
 export function render(
   ctx: CanvasRenderingContext2D,
@@ -44,10 +50,10 @@ export function render(
   // slide toward, so snapping to current cells matches the input being paused.
   const drawAlpha = state.status === 'playing' ? Math.max(0, Math.min(1, alpha)) : 0;
   drawSnake(ctx, state, cfg, drawAlpha);
+  drawGridBorder(ctx, cfg);
 
-  // In-canvas HUD — drawn ON TOP of the grid/snake so it stays legible even
-  // when the snake passes through the top row. Translates "score/best/length"
-  // from the chrome HUD into the play area, Pac-Man style.
+  // In-canvas HUD — drawn on top of the board so it stays legible even when
+  // the snake passes through the top row.
   drawHud(ctx, state, hud.highScore, cfg);
 
   if (state.status === 'paused') drawOverlay(ctx, w, h, 'Paused', 'Space to resume');
@@ -68,33 +74,42 @@ function drawHud(
   cfg: SnakeConfig,
 ): void {
   const w = cfg.cols * cfg.cellSize;
-  // Bg band makes the values readable when the snake or food sits underneath.
   ctx.fillStyle = COLORS.hudBg;
-  ctx.fillRect(0, 0, w, 20);
+  ctx.fillRect(0, 0, w, HUD_HEIGHT);
 
-  ctx.font = '6px monospace';
   ctx.textBaseline = 'top';
+  const fontFamily = pixelFontFamily();
+  const labelFont = `${HUD_LABEL_FONT_SIZE}px ${fontFamily}`;
+  const valueFont = `${HUD_VALUE_FONT_SIZE}px ${fontFamily}`;
+  const labelY = 4;
+  const valueY = 15;
 
   // SCORE (left).
   ctx.fillStyle = COLORS.hudDim;
   ctx.textAlign = 'left';
-  ctx.fillText('SCORE', 6, 2);
+  ctx.font = labelFont;
+  ctx.fillText('SCORE', HUD_PAD_X, labelY);
   ctx.fillStyle = COLORS.hudValue;
-  ctx.fillText(pad(state.score, 6), 6, 10);
+  ctx.font = valueFont;
+  ctx.fillText(pad(state.score, 6), HUD_PAD_X, valueY);
 
   // HIGH (centre).
   ctx.fillStyle = COLORS.hudDim;
   ctx.textAlign = 'center';
-  ctx.fillText('HIGH', w / 2, 2);
+  ctx.font = labelFont;
+  ctx.fillText('HIGH', w / 2, labelY);
   ctx.fillStyle = COLORS.hudValue;
-  ctx.fillText(pad(highScore, 6), w / 2, 10);
+  ctx.font = valueFont;
+  ctx.fillText(pad(highScore, 6), w / 2, valueY);
 
   // LENGTH (right).
   ctx.fillStyle = COLORS.hudDim;
   ctx.textAlign = 'right';
-  ctx.fillText('LENGTH', w - 6, 2);
+  ctx.font = labelFont;
+  ctx.fillText('LENGTH', w - HUD_PAD_X, labelY);
   ctx.fillStyle = COLORS.hudValue;
-  ctx.fillText(pad(state.body.length, 3), w - 6, 10);
+  ctx.font = valueFont;
+  ctx.fillText(pad(state.body.length, 3), w - HUD_PAD_X, valueY);
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, cfg: SnakeConfig): void {
@@ -129,6 +144,15 @@ function drawGrid(ctx: CanvasRenderingContext2D, cfg: SnakeConfig): void {
     ctx.lineTo(w, r * cfg.cellSize + 0.5);
   }
   ctx.stroke();
+}
+
+function drawGridBorder(ctx: CanvasRenderingContext2D, cfg: SnakeConfig): void {
+  const w = cfg.cols * cfg.cellSize;
+  const h = cfg.rows * cfg.cellSize;
+
+  ctx.strokeStyle = COLORS.gridBorder;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, w - 2, h - 2);
 }
 
 function drawFood(

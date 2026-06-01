@@ -92,7 +92,7 @@ export function renderPlayfield(
 
   // Ghost piece.
   const active = state.active;
-  if (active && state.status === 'playing') {
+  if (cfg.ghostEnabled && active && state.status === 'playing') {
     const gy = dropY(active, state.grid);
     if (gy > active.y) {
       const ghost: ActivePiece = { ...active, y: gy };

@@ -29,6 +29,9 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
           <div class="stat"><span class="label">High</span><span class="value">{{ highScore() }}</span></div>
           <div class="stat"><span class="label">Lines</span><span class="value">{{ lines() }}</span></div>
           <div class="stat"><span class="label">Level</span><span class="value">{{ level() }}</span></div>
+          @if (!ghostEnabled()) {
+            <div class="stat ghost-off"><span class="label">Ghost</span><span class="value">OFF</span></div>
+          }
           <button type="button" class="icon-btn" (click)="creditsOpen.set(true)" aria-label="Credits" title="Credits (C)">©</button>
           <button type="button" class="icon-btn" (click)="helpOpen.set(true)" aria-label="Help" title="Help (H or ?)">?</button>
         </div>
@@ -36,8 +39,8 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       <div #host class="host"></div>
       <p class="hint">
         Arrows move &middot; Z/X rotate &middot; A 180° &middot; Space hard drop &middot; Down soft drop
-        &middot; Shift hold &middot; P pause &middot; Esc pause/quit &middot; M mute &middot; H help &middot; C credits
-        &middot; \\ fullscreen &middot; 0–4 navigate
+        &middot; Shift hold &middot; G ghost &middot; P pause &middot; Esc pause/quit &middot; M mute &middot; H help
+        &middot; C credits &middot; \\ fullscreen &middot; 0–4 navigate
       </p>
       <app-help-dialog [(open)]="helpOpen" title="Tetris">
         <h4>Goal</h4>
@@ -55,6 +58,7 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
           <tr><td><kbd>Z</kbd></td><td>Rotate counter-clockwise</td></tr>
           <tr><td><kbd>A</kbd></td><td>180° flip</td></tr>
           <tr><td><kbd>Shift</kbd></td><td>Hold (one swap per piece)</td></tr>
+          <tr><td><kbd>G</kbd></td><td>Toggle ghost piece outline</td></tr>
           <tr><td><kbd>P</kbd></td><td>Pause / resume</td></tr>
           <tr><td><kbd>Enter</kbd></td><td>Start / retry after game over</td></tr>
         </table>
@@ -142,6 +146,7 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
       align-items: center;
     }
     .stat { display: flex; flex-direction: column; align-items: flex-end; }
+    .stat.ghost-off .value { color: var(--nyx-brand-hi); }
     .scores .label { color: var(--nyx-fg-dim); font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
     .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--nyx-accent); line-height: 1; margin-top: 0.25rem; }
     .icon-btn {
@@ -206,6 +211,7 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
   protected readonly highScore = signal(0);
   protected readonly lines = signal(0);
   protected readonly level = signal(1);
+  protected readonly ghostEnabled = signal(true);
   protected readonly helpOpen = signal(false);
   protected readonly creditsOpen = signal(false);
   protected readonly arcadeMode = signal(false);
@@ -271,6 +277,7 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
       this.highScore.set(snap.highScore);
       this.lines.set(snap.lines);
       this.level.set(snap.level);
+      this.ghostEnabled.set(snap.ghostEnabled);
     });
     this.game.start();
   }

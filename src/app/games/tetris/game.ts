@@ -48,6 +48,8 @@ export interface TetrisGame {
   readonly state: GameState;
   readonly highScore: number;
   onChange(cb: (snapshot: TetrisSnapshot) => void): () => void;
+  toggleGhost(): boolean;
+  readonly ghostEnabled: boolean;
   toggleMute(): boolean;
   readonly muted: boolean;
 }
@@ -60,6 +62,7 @@ export interface TetrisSnapshot {
   status: GameState['status'];
   combo: number;
   b2b: boolean;
+  ghostEnabled: boolean;
 }
 
 export interface TetrisOptions extends Partial<TetrisConfig> {
@@ -67,6 +70,7 @@ export interface TetrisOptions extends Partial<TetrisConfig> {
 }
 
 const STORAGE_NS = 'arcade.tetris';
+const GHOST_ENABLED_KEY = 'ghostEnabled';
 
 export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): TetrisGame {
   const cfg: TetrisConfig = { ...DEFAULT_CONFIG, ...opts };
@@ -79,6 +83,8 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   let state: GameState = createInitialState();
   let bag = new SevenBag(rng);
   let highScore = storage.get<number>(cfg.storageKey, 0);
+  let ghostEnabled = storage.get<boolean>(GHOST_ENABLED_KEY, cfg.ghostEnabled);
+  cfg.ghostEnabled = ghostEnabled;
 
   const subscribers = new Set<(s: TetrisSnapshot) => void>();
   const notify = (): void => {
@@ -90,6 +96,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       status: state.status,
       combo: state.combo,
       b2b: state.b2bActive,
+      ghostEnabled,
     };
     for (const cb of subscribers) cb(snap);
   };
@@ -269,6 +276,14 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     }
   };
 
+  const toggleGhost = (): boolean => {
+    ghostEnabled = !ghostEnabled;
+    cfg.ghostEnabled = ghostEnabled;
+    storage.set(GHOST_ENABLED_KEY, ghostEnabled);
+    notify();
+    return ghostEnabled;
+  };
+
   /** Handle key edge events (called once per frame for each relevant key). */
   const handleEdges = (): void => {
     // Pause / restart that work regardless of state.
@@ -278,6 +293,9 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       if (state.status === 'playing' || state.status === 'paused' || state.status === 'lineclear') {
         togglePause();
       }
+    }
+    if (onPressed('KeyG')) {
+      toggleGhost();
     }
     if (onPressed('Enter')) {
       if (state.status === 'idle' || state.status === 'gameover') {
@@ -317,7 +335,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   const drainPresses = (): void => {
     for (const code of [
       'ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space',
-      'KeyX', 'KeyZ', 'KeyA', 'KeyC', 'ShiftLeft', 'ShiftRight',
+      'KeyX', 'KeyZ', 'KeyA', 'KeyC', 'ShiftLeft', 'ShiftRight', 'KeyG',
     ]) {
       keyboard.consumePress(code);
     }
@@ -457,9 +475,14 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
         status: state.status,
         combo: state.combo,
         b2b: state.b2bActive,
+        ghostEnabled,
       };
       cb(snap);
       return () => subscribers.delete(cb);
+    },
+    toggleGhost,
+    get ghostEnabled(): boolean {
+      return ghostEnabled;
     },
     toggleMute(): boolean {
       return audio.toggleMute();
