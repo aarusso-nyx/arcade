@@ -18,5 +18,8 @@ export const routes: Routes = [
   { path: 'snake/help', loadComponent: snake, data: { help: true } },
   { path: 'termo', loadComponent: termo, data: { help: false } },
   { path: 'termo/help', loadComponent: termo, data: { help: true } },
+  // /termo/archive opens the archive picker on load. The archived puzzle
+  // itself is loaded via the `?day=N` query param on the /termo route.
+  { path: 'termo/archive', loadComponent: termo, data: { help: false, archive: true } },
   { path: '**', redirectTo: '' },
 ];

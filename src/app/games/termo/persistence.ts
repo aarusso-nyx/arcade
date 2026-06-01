@@ -1,9 +1,27 @@
 import { createStorage, type NamespacedStorage } from '../../../core';
 import type { TileEvaluation } from './evaluator';
 import type { GameStatus } from './state';
+import { emptyStats, STATS_SCHEMA_VERSION, type TermoStats } from './stats';
 
 const STORAGE_NS = 'arcade.termo';
 const SCHEMA_VERSION = 1;
+
+/**
+ * Storage schema delta (v1 → v2):
+ *
+ *  v1 keys (unchanged): `daily`, `dailyMeta`, `infinite`, `infinite.6`,
+ *  `infinite.7` — each tagged with `v: 1` and read/written exactly as
+ *  before. v1 → v2 leaves these untouched.
+ *
+ *  v2 adds: a new top-level key `stats` holding a {@link TermoStats}
+ *  blob tagged with `schemaVersion: 2`. This is a separate aggregate that
+ *  tracks the player's overall record across daily + training; daily
+ *  streak in `dailyMeta` is kept in parallel for backwards compat and to
+ *  keep the share-string logic unchanged. On first read after the
+ *  migration, stats default to zeros (we deliberately don't back-fill
+ *  from v1 because pre-v2 data doesn't reliably record per-game
+ *  outcomes).
+ */
 
 export interface StoredDaily {
   v: number;
@@ -48,6 +66,12 @@ export interface TermoStorage {
    */
   readInfinite(wordLength: number): StoredInfinite;
   writeInfinite(wordLength: number, data: Omit<StoredInfinite, 'v'>): void;
+  /**
+   * v2 stats blob — aggregated win/loss/streak/histogram across daily and
+   * training games. Returns a fresh-zeroed object when missing.
+   */
+  readStats(): TermoStats;
+  writeStats(stats: TermoStats): void;
 }
 
 function isValidDaily(x: unknown): x is StoredDaily {
@@ -80,6 +104,21 @@ function isValidInfinite(x: unknown): x is StoredInfinite {
     i.v === SCHEMA_VERSION &&
     typeof i.bestStreak === 'number' &&
     typeof i.currentStreak === 'number'
+  );
+}
+
+function isValidStats(x: unknown): x is TermoStats {
+  if (!x || typeof x !== 'object') return false;
+  const s = x as Partial<TermoStats>;
+  return (
+    s.schemaVersion === STATS_SCHEMA_VERSION &&
+    typeof s.played === 'number' &&
+    typeof s.won === 'number' &&
+    typeof s.currentStreak === 'number' &&
+    typeof s.maxStreak === 'number' &&
+    !!s.winsByAttempt &&
+    typeof s.winsByAttempt === 'object' &&
+    (s.lastPlayedPuzzle === null || typeof s.lastPlayedPuzzle === 'number')
   );
 }
 
@@ -142,6 +181,14 @@ export function createTermoStorage(
     },
     writeInfinite(wordLength, data): void {
       storage.set(infiniteStorageKey(wordLength), { v: SCHEMA_VERSION, ...data });
+    },
+    readStats(): TermoStats {
+      const raw = storage.get<unknown>('stats', null);
+      if (!isValidStats(raw)) return emptyStats();
+      return raw;
+    },
+    writeStats(stats: TermoStats): void {
+      storage.set('stats', { ...stats, schemaVersion: STATS_SCHEMA_VERSION });
     },
   };
 }

@@ -5,6 +5,7 @@ import type {
   StoredInfinite,
   TermoStorage,
 } from './persistence';
+import { emptyStats, type TermoStats } from './stats';
 import type { WordLists } from './wordlist';
 
 function makeLists(): WordLists {
@@ -35,12 +36,14 @@ function makeStorage(): {
     daily: StoredDaily | null;
     meta: StoredDailyMeta | null;
     infinite: Record<number, StoredInfinite | null>;
+    stats: TermoStats;
   };
 } {
   const data = {
     daily: null as StoredDaily | null,
     meta: null as StoredDailyMeta | null,
     infinite: {} as Record<number, StoredInfinite | null>,
+    stats: emptyStats(),
   };
   const storage: TermoStorage = {
     readDaily: () => data.daily,
@@ -65,6 +68,10 @@ function makeStorage(): {
       data.infinite[len] ?? { v: 1, bestStreak: 0, currentStreak: 0 },
     writeInfinite: (len, i) => {
       data.infinite[len] = { v: 1, ...i };
+    },
+    readStats: () => data.stats,
+    writeStats: (s) => {
+      data.stats = s;
     },
   };
   return { storage, data };

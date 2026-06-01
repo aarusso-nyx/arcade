@@ -11,6 +11,8 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { tryNavigate } from '../../shared/arcade-shortcuts';
+import { createAudio, registerSounds, type Audio } from '../../../core';
+import { TERMO_SFX } from './audio';
 import { createTermoGame, type TermoGame } from './game';
 import { normalize } from './normalize';
 import {
@@ -20,6 +22,12 @@ import {
   type WordLists,
 } from './wordlist';
 import { infiniteStorageKey } from './persistence';
+import { maxBin, winPercent, type TermoStats } from './stats';
+import {
+  dateForPuzzleNumber,
+  recentArchiveEntries,
+  type ArchiveEntry,
+} from './archive';
 import type { Effect, GameMode, GameState, KeyState } from './state';
 
 interface TileView {
@@ -89,6 +97,20 @@ const TOAST_DURATION_MS = 2000;
             aria-label="Instruções"
             title="Instruções (?)"
           >?</button>
+          <button
+            type="button"
+            class="help-btn"
+            (click)="openStats()"
+            aria-label="Estatísticas"
+            title="Estatísticas"
+          >📊</button>
+          <button
+            type="button"
+            class="help-btn"
+            (click)="archiveOpen.set(true)"
+            aria-label="Arquivo de jogos diários"
+            title="Arquivo"
+          >📅</button>
         </div>
       </header>
 
@@ -118,6 +140,55 @@ const TOAST_DURATION_MS = 2000;
         </p>
       </app-help-dialog>
 
+      <app-help-dialog [(open)]="statsOpen" title="Estatísticas — Termo">
+        @if (statsView(); as s) {
+          <div class="stats-summary">
+            <div class="stat"><div class="num">{{ s.played }}</div><div class="lbl">Jogadas</div></div>
+            <div class="stat">
+              <div class="num">{{ s.won }}</div>
+              <div class="lbl">Vitórias ({{ s.winPercent }}%)</div>
+            </div>
+            <div class="stat"><div class="num">{{ s.currentStreak }}</div><div class="lbl">Sequência atual</div></div>
+            <div class="stat"><div class="num">{{ s.maxStreak }}</div><div class="lbl">Melhor sequência</div></div>
+          </div>
+          <h4>Distribuição de vitórias</h4>
+          @if (s.totalWins === 0) {
+            <p class="hint" style="text-align:center">Nenhuma vitória registrada ainda.</p>
+          } @else {
+            <div class="histogram">
+              @for (bin of s.bins; track bin.attempt) {
+                <div class="hist-row" [class.highlight]="bin.highlight">
+                  <span class="hist-label">{{ bin.attempt }}</span>
+                  <span
+                    class="hist-bar"
+                    [style.width.%]="bin.widthPct"
+                  >{{ bin.count }}</span>
+                </div>
+              }
+            </div>
+          }
+        }
+      </app-help-dialog>
+
+      <app-help-dialog [(open)]="archiveOpen" title="Arquivo — Termo">
+        <p>Reviva qualquer um dos últimos 30 dias. Jogos arquivados são para
+          prática — não contam para suas estatísticas nem alteram sua sequência.</p>
+        <ul class="archive-list">
+          @for (entry of archiveEntries(); track entry.puzzleNumber) {
+            <li>
+              <button
+                type="button"
+                class="archive-row"
+                (click)="loadArchive(entry)"
+              >
+                <span class="archive-num">Diário #{{ entry.puzzleNumber }}</span>
+                <span class="archive-date">{{ formatArchiveDate(entry.date) }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      </app-help-dialog>
+
       <app-help-dialog [(open)]="helpOpen" title="Termo">
         <h4>Objetivo</h4>
         <p>
@@ -140,6 +211,7 @@ const TOAST_DURATION_MS = 2000;
           <tr><td><kbd>A</kbd>…<kbd>Z</kbd></td><td>Digitar letra (acentos são normalizados)</td></tr>
           <tr><td><kbd>Enter</kbd></td><td>Enviar palpite</td></tr>
           <tr><td><kbd>Backspace</kbd></td><td>Apagar letra</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>M</kbd></td><td>Ligar / desligar som</td></tr>
           <tr><td><kbd>?</kbd></td><td>Abrir / fechar esta janela</td></tr>
         </table>
         <p>
@@ -153,6 +225,15 @@ const TOAST_DURATION_MS = 2000;
           <em>Compartilhar</em> (grade de emojis).<br>
           <strong>Treino</strong> — palavras aleatórias. Você escolhe o comprimento (5, 6, ou 7);
           sequências de vitórias são contadas separadamente por comprimento.
+        </p>
+        <h4>Estatísticas e Arquivo</h4>
+        <p>
+          O botão <strong>📊</strong> abre suas estatísticas (jogadas, vitórias,
+          sequência atual, melhor sequência e o histograma de tentativas até a
+          vitória). A janela abre automaticamente ao final de cada jogo.<br>
+          O botão <strong>📅</strong> abre o arquivo dos últimos 30 dias —
+          clique em qualquer dia para revisitar o puzzle. Partidas arquivadas
+          são apenas para prática e não alteram suas estatísticas.
         </p>
       </app-help-dialog>
 
@@ -251,9 +332,16 @@ const TOAST_DURATION_MS = 2000;
         </div>
 
         @if (mode() === 'daily') {
-          <p class="hint">
-            Diário #{{ puzzleNumber() }}. Pressione Enter para enviar, Backspace para apagar.
-          </p>
+          @if (isArchive()) {
+            <p class="hint">
+              Diário #{{ puzzleNumber() }} — Arquivo ({{ archiveDateLabel() }}).
+              Esta partida não conta para suas estatísticas.
+            </p>
+          } @else {
+            <p class="hint">
+              Diário #{{ puzzleNumber() }}. Pressione Enter para enviar, Backspace para apagar.
+            </p>
+          }
         } @else {
           <p class="hint">Treino: palavra aleatória. Sequência: {{ infiniteStreak() }}.</p>
         }
@@ -503,6 +591,84 @@ const TOAST_DURATION_MS = 2000;
     }
     .error { color: #ff7a7a; }
 
+    /* Stats modal */
+    .stats-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .stats-summary .stat { text-align: center; }
+    .stats-summary .num {
+      font-size: 1.7rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--nyx-brand-hi);
+    }
+    .stats-summary .lbl {
+      font-size: 0.7rem;
+      color: #8a8f99;
+      margin-top: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .histogram {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 0.5rem;
+    }
+    .hist-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .hist-label {
+      width: 1.25rem;
+      text-align: right;
+      color: #8a8f99;
+      font-weight: 600;
+    }
+    .hist-bar {
+      background: var(--gray);
+      color: #fff;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      min-width: 1.5rem;
+      text-align: right;
+      box-sizing: border-box;
+    }
+    .hist-row.highlight .hist-bar { background: var(--green); }
+
+    /* Archive list */
+    .archive-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .archive-row {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #23262d;
+      color: inherit;
+      border: 0;
+      border-radius: 4px;
+      padding: 0.55rem 0.8rem;
+      font: inherit;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    .archive-row:hover { background: #3a3f4b; }
+    .archive-num { font-weight: 600; }
+    .archive-date { color: #8a8f99; font-size: 0.85rem; }
+
     /* Arcade / fullscreen mode: hide the chrome, take over the viewport. */
     :host.arcade { position: fixed; inset: 0; z-index: 9999; background: var(--nyx-bg); }
     :host.arcade .page { max-width: none; height: 100vh; padding: 1rem; }
@@ -512,23 +678,37 @@ const TOAST_DURATION_MS = 2000;
 })
 export class TermoComponent implements AfterViewInit, OnDestroy {
   private game: TermoGame | null = null;
+  private audio: Audio | null = null;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private toastTimer: number | null = null;
   private shakingTimer: number | null = null;
   private revealTimers: number[] = [];
   private bouncingTimer: number | null = null;
+  /** Timers for per-tile flip clicks (rowReveal scheduling). */
+  private flipClickTimers: number[] = [];
+  /** Status before the last dispatch — used to detect win/loss transitions. */
+  private lastStatusForAudio: 'playing' | 'won' | 'lost' = 'playing';
 
   protected readonly helpOpen = signal(false);
   protected readonly creditsOpen = signal(false);
+  protected readonly statsOpen = signal(false);
+  protected readonly archiveOpen = signal(false);
   protected readonly arcadeMode = signal(false);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  /** Bumped by orchestrator events so storage-backed signals recompute. */
+  private readonly statsVersion = signal(0);
+  /** Auto-open scheduler for the end-of-game stats modal. */
+  private statsAutoOpenTimer: number | null = null;
+  /** Tracks the puzzle for which we've already scheduled the auto-open. */
+  private lastAutoOpenForPuzzle: string | null = null;
 
   @HostBinding('class.arcade')
   protected get arcadeClass(): boolean { return this.arcadeMode(); }
 
   constructor() {
-    const route = inject(ActivatedRoute);
-    if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
+    if (this.route.snapshot.data['help'] === true) this.helpOpen.set(true);
+    if (this.route.snapshot.data['archive'] === true) this.archiveOpen.set(true);
   }
 
   // ---------- reactive UI state ----------
@@ -598,6 +778,40 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     );
   });
 
+  protected readonly isArchive = computed(() => {
+    this.stateVersion();
+    return this.game?.isArchive() ?? false;
+  });
+
+  protected readonly archiveDateLabel = computed(() => {
+    this.stateVersion();
+    const p = this.game?.state().puzzleNumber ?? null;
+    if (p === null || !this.game?.isArchive()) return '';
+    return this.formatArchiveDate(dateForPuzzleNumber(p));
+  });
+
+  /** Computed read of the recent archive — refreshed when entries open. */
+  protected readonly archiveEntries = computed<ArchiveEntry[]>(() => {
+    this.archiveOpen(); // re-eval when reopened so list stays fresh past midnight
+    return recentArchiveEntries(30);
+  });
+
+  /** View-model for the stats modal — reads storage via game.stats(). */
+  protected readonly statsView = computed(() => {
+    this.statsVersion();
+    this.statsOpen();
+    if (!this.game) return null;
+    const s: TermoStats = this.game.stats();
+    return buildStatsView(s, this.currentWonAttempts());
+  });
+
+  /** Attempts used in the just-finished game, if it was a win. */
+  private currentWonAttempts(): number | null {
+    const st = this.game?.state();
+    if (!st || st.status !== 'won') return null;
+    return st.guesses.length;
+  }
+
   protected readonly keyboardRows = computed<KeyView[][]>(() => {
     this.stateVersion();
     const ks = this.game?.state().keyStates ?? {};
@@ -625,6 +839,8 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
       window.removeEventListener('keydown', this.keydownHandler);
     }
     this.clearTimers();
+    this.audio?.destroy();
+    this.audio = null;
   }
 
   // ---------- handlers ----------
@@ -649,6 +865,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.bouncingRow.set(null);
     this.toast.set(null);
     this.game.setMode(mode);
+    this.lastStatusForAudio = this.game.state().status;
     this.refreshInfiniteStreakDisplay();
     this.bump();
   }
@@ -660,6 +877,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.revealedRow.set(null);
     this.revealingRow.set(null);
     this.game.newInfinite();
+    this.lastStatusForAudio = this.game.state().status;
     this.refreshInfiniteStreakDisplay();
     this.bump();
   }
@@ -684,6 +902,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.bouncingRow.set(null);
     this.toast.set(null);
     this.game.newInfinite(len);
+    this.lastStatusForAudio = this.game.state().status;
     this.refreshInfiniteStreakDisplay();
     this.bump();
   }
@@ -719,6 +938,41 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  protected openStats(): void {
+    this.statsOpen.set(true);
+  }
+
+  protected loadArchive(entry: ArchiveEntry): void {
+    if (!this.game) return;
+    this.clearTimers();
+    this.shakingRow.set(null);
+    this.revealingRow.set(null);
+    this.revealedRow.set(null);
+    this.bouncingRow.set(null);
+    this.toast.set(null);
+    this.archiveOpen.set(false);
+    // Switch to daily mode if needed; loadArchive itself sets the state.
+    if (this.game.state().mode !== 'daily') {
+      this.game.setMode('daily');
+    }
+    this.game.loadArchive(entry.puzzleNumber);
+    this.lastStatusForAudio = this.game.state().status;
+    this.lastAutoOpenForPuzzle = null;
+    // Reflect the URL so the player can share / refresh the archived game.
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { day: entry.puzzleNumber },
+      queryParamsHandling: 'merge',
+    });
+    this.bump();
+  }
+
+  protected formatArchiveDate(d: Date): string {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}`;
+  }
+
   protected ariaForTile(tile: TileView): string {
     if (!tile.letter) return 'vazio';
     switch (tile.eval) {
@@ -750,8 +1004,31 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Audio is owned by the component (not the orchestrator) because Termo's
+    // SFX timing is tied to the per-tile flip animation that the component
+    // schedules.
+    this.audio = createAudio();
+    registerSounds(this.audio, TERMO_SFX);
+    this.lastStatusForAudio = this.game.state().status;
+
     this.keydownHandler = (e: KeyboardEvent): void => this.onPhysicalKey(e);
     window.addEventListener('keydown', this.keydownHandler);
+
+    // Honour the ?day=N archive query param.
+    const dayParam = this.route.snapshot.queryParamMap.get('day');
+    if (dayParam !== null) {
+      const n = Number(dayParam);
+      if (Number.isFinite(n) && n >= 1) {
+        this.game.loadArchive(Math.floor(n));
+      }
+    }
+
+    // If we rehydrated a completed daily, suppress the auto-open trigger
+    // for that puzzle so just reopening the page doesn't fire the modal.
+    const st = this.game.state();
+    if (st.mode === 'daily' && st.puzzleNumber !== null && st.status !== 'playing') {
+      this.lastAutoOpenForPuzzle = `${st.puzzleNumber}-${st.status}`;
+    }
 
     this.refreshInfiniteStreakDisplay();
     this.ready.set(true);
@@ -775,6 +1052,13 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
       this.creditsOpen.update((v) => !v);
       return;
     }
+    // Mute: uppercase M only — lowercase m is a valid letter in Termo words.
+    if (e.key === 'M') {
+      e.preventDefault();
+      const muted = this.audio?.toggleMute() ?? false;
+      this.showToast(muted ? 'som desligado' : 'som ligado');
+      return;
+    }
     // Backslash toggles arcade / fullscreen mode.
     if (e.key === '\\') {
       e.preventDefault();
@@ -784,6 +1068,10 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     // Esc: close arcade mode first, otherwise quit to the arcade home
     // (Termo has no pause state to fall through to).
     if (e.key === 'Escape') {
+      // Let the native <dialog> close on Esc without quitting to home.
+      if (this.helpOpen() || this.creditsOpen() || this.statsOpen() || this.archiveOpen()) {
+        return;
+      }
       e.preventDefault();
       if (this.arcadeMode()) {
         this.arcadeMode.set(false);
@@ -798,9 +1086,9 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
       e.preventDefault();
       return;
     }
-    // If the help dialog is open, swallow letter/Enter/Backspace events so
-    // typing inside the dialog doesn't dispatch into the game.
-    if (this.helpOpen() || this.creditsOpen()) return;
+    // If any modal is open, swallow letter/Enter/Backspace events so typing
+    // inside the dialog doesn't dispatch into the game.
+    if (this.helpOpen() || this.creditsOpen() || this.statsOpen() || this.archiveOpen()) return;
     if (!this.game) return;
     if (this.game.state().status !== 'playing') return;
     if (e.key === 'Enter') {
@@ -826,6 +1114,30 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     const effects = this.game.dispatch(action);
     this.bump();
     this.processEffects(effects);
+    this.maybePlayEndOfGameSfx();
+  }
+
+  /**
+   * Win / loss audio fires once on the status transition. Scheduled so the
+   * sting lands after the row flip-reveal completes (matches the visual
+   * BOUNCE_WIN timing for wins; losses get the same delay so the reveal of
+   * the final row plays first).
+   */
+  private maybePlayEndOfGameSfx(): void {
+    if (!this.game || !this.audio) return;
+    const status = this.game.state().status;
+    if (status === this.lastStatusForAudio) return;
+    const prev = this.lastStatusForAudio;
+    this.lastStatusForAudio = status;
+    if (prev !== 'playing') return; // ignore replay resets ('won' → 'playing')
+    if (status === 'won' || status === 'lost') {
+      const key = status; // capture for closure
+      const delay = 4 * REVEAL_STAGGER_MS + FLIP_DURATION_MS;
+      const t = window.setTimeout(() => {
+        this.audio?.play(key === 'won' ? 'win' : 'loss');
+      }, delay);
+      this.revealTimers.push(t);
+    }
   }
 
   private processEffects(effects: Effect[]): void {
@@ -834,12 +1146,68 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
         this.showToast(eff.message);
       } else if (eff.type === 'SHAKE_ROW') {
         this.triggerShake(eff.row);
+        this.audio?.play('invalid');
       } else if (eff.type === 'FLIP_REVEAL') {
         this.triggerFlip(eff.row);
+        this.scheduleFlipClicks();
       } else if (eff.type === 'BOUNCE_WIN') {
         this.scheduleBounce(eff.row);
+      } else if (eff.type === 'STATS_UPDATED') {
+        this.statsVersion.update((v) => v + 1);
+        this.scheduleStatsAutoOpen();
       }
     }
+  }
+
+  /**
+   * Schedule one short click per tile reveal, aligned with the per-tile
+   * REVEAL_STAGGER, plus a single rowReveal chord at the end. We schedule
+   * via setTimeout (rather than using the AudioContext's own clock) so the
+   * clicks remain audibly aligned with the CSS flip animation that lives
+   * on the same wall-clock timeline.
+   */
+  private scheduleFlipClicks(): void {
+    if (!this.audio || !this.game) return;
+    const cols = this.game.state().wordLength;
+    for (let c = 0; c < cols; c++) {
+      const t = window.setTimeout(() => {
+        this.audio?.play('tileFlip');
+      }, c * REVEAL_STAGGER_MS);
+      this.flipClickTimers.push(t);
+    }
+    // Row reveal chord plays after the last tile has flipped.
+    const rowT = window.setTimeout(() => {
+      this.audio?.play('rowReveal');
+    }, (cols - 1) * REVEAL_STAGGER_MS + Math.floor(FLIP_DURATION_MS / 2));
+    this.flipClickTimers.push(rowT);
+  }
+
+  /**
+   * Auto-open the stats modal ~600ms after the end-of-game animation
+   * starts, so the bounce / loss reveal plays first. We deliberately delay
+   * by FLIP_REVEAL + BOUNCE durations so the modal lands cleanly.
+   */
+  private scheduleStatsAutoOpen(): void {
+    const st = this.game?.state();
+    if (!st || st.status === 'playing') return;
+    // Suppress for archived plays (they don't change stats — the modal would
+    // be misleading) and for replays we've already auto-opened.
+    if (this.game?.isArchive()) return;
+    const key =
+      st.mode === 'daily'
+        ? `${st.puzzleNumber}-${st.status}`
+        : `infinite-${Date.now()}`;
+    if (this.lastAutoOpenForPuzzle === key) return;
+    this.lastAutoOpenForPuzzle = key;
+    if (this.statsAutoOpenTimer !== null) {
+      window.clearTimeout(this.statsAutoOpenTimer);
+    }
+    // 600ms after the flip+bounce animation finishes.
+    const delay = 4 * REVEAL_STAGGER_MS + FLIP_DURATION_MS + 600;
+    this.statsAutoOpenTimer = window.setTimeout(() => {
+      this.statsOpen.set(true);
+      this.statsAutoOpenTimer = null;
+    }, delay);
   }
 
   private triggerShake(row: number): void {
@@ -909,10 +1277,14 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   private clearTimers(): void {
     for (const t of this.revealTimers) window.clearTimeout(t);
     this.revealTimers = [];
+    for (const t of this.flipClickTimers) window.clearTimeout(t);
+    this.flipClickTimers = [];
     if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
     if (this.shakingTimer !== null) window.clearTimeout(this.shakingTimer);
     if (this.bouncingTimer !== null) window.clearTimeout(this.bouncingTimer);
+    if (this.statsAutoOpenTimer !== null) window.clearTimeout(this.statsAutoOpenTimer);
     this.toastTimer = this.shakingTimer = this.bouncingTimer = null;
+    this.statsAutoOpenTimer = null;
   }
 
   private bump(): void {
@@ -985,4 +1357,60 @@ function buildBoardRows(
     rows.push(row);
   }
   return rows;
+}
+
+interface StatsBinView {
+  attempt: number;
+  count: number;
+  widthPct: number;
+  highlight: boolean;
+}
+
+interface StatsView {
+  played: number;
+  won: number;
+  winPercent: number;
+  currentStreak: number;
+  maxStreak: number;
+  totalWins: number;
+  bins: StatsBinView[];
+}
+
+/**
+ * Pure view-model builder for the stats modal. `highlightAttempts`, when
+ * non-null, highlights the histogram row matching the current game's
+ * winning attempt count (so the player sees where their game landed).
+ */
+function buildStatsView(
+  s: TermoStats,
+  highlightAttempts: number | null,
+): StatsView {
+  // Display attempt rows 1..8 — covers all current wordLengths (max 7+1).
+  const attempts = [1, 2, 3, 4, 5, 6, 7, 8];
+  // Trim to keys actually used OR up to 6 (typical Termo default) — keep
+  // the row count compact so the modal stays small.
+  const presentMax = Object.keys(s.winsByAttempt)
+    .map((k) => Number(k))
+    .reduce((acc, n) => Math.max(acc, n), 6);
+  const rows = attempts.filter((n) => n <= presentMax);
+  const m = maxBin(s);
+  const bins: StatsBinView[] = rows.map((attempt) => {
+    const count = s.winsByAttempt[attempt] ?? 0;
+    const widthPct = m === 0 ? 8 : Math.max(8, Math.round((count / m) * 100));
+    return {
+      attempt,
+      count,
+      widthPct,
+      highlight: highlightAttempts === attempt,
+    };
+  });
+  return {
+    played: s.played,
+    won: s.won,
+    winPercent: winPercent(s),
+    currentStreak: s.currentStreak,
+    maxStreak: s.maxStreak,
+    totalWins: s.won,
+    bins,
+  };
 }

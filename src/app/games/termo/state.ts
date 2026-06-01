@@ -34,7 +34,13 @@ export type Effect =
   | { type: 'TOAST'; message: string }
   | { type: 'FLIP_REVEAL'; row: number }
   | { type: 'BOUNCE_WIN'; row: number }
-  | { type: 'PERSIST' };
+  | { type: 'PERSIST' }
+  /**
+   * Emitted on the SUBMIT that flips the game out of `playing` (won OR lost).
+   * The orchestrator decides whether the outcome counts toward player stats
+   * (archived daily plays are skipped); the reducer just signals the event.
+   */
+  | { type: 'STATS_UPDATED'; won: boolean; attempts: number };
 
 export interface ReduceResult {
   state: GameState;
@@ -196,6 +202,13 @@ export function reduce(
       ];
       if (isWin) effects.push({ type: 'BOUNCE_WIN', row: state.currentRow });
       effects.push({ type: 'PERSIST' });
+      if (isWin || isLoss) {
+        effects.push({
+          type: 'STATS_UPDATED',
+          won: isWin,
+          attempts: newGuesses.length,
+        });
+      }
 
       return {
         state: {

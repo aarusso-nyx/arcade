@@ -17,6 +17,7 @@ import {
   type TermoStorage,
 } from './persistence';
 import { buildShareString } from './share';
+import { applyOutcome, type TermoStats } from './stats';
 import type { WordLists } from './wordlist';
 
 export interface TermoGame {
@@ -38,6 +39,16 @@ export interface TermoGame {
   infiniteLength(): number;
   shareString(): string | null;
   countdownMs(): number;
+  /**
+   * Load a specific past daily puzzle for replay. Archived plays do NOT
+   * affect stats or streak (the orchestrator gates STATS_UPDATED). Pass
+   * `null` to return to the live daily.
+   */
+  loadArchive(puzzleNumber: number | null): void;
+  /** True when the current daily game is an archived (older) puzzle. */
+  isArchive(): boolean;
+  /** Latest persisted stats snapshot. */
+  stats(): TermoStats;
 }
 
 export interface TermoOptions {
@@ -108,6 +119,13 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     infiniteLength = DEFAULT_WORD_LENGTH;
   }
 
+  /**
+   * Set to the archived puzzle number when the player is replaying a past
+   * daily; null while on the live daily. Archived plays do not write to
+   * `daily` storage, do not touch `dailyMeta`, and do not feed stats.
+   */
+  let archivePuzzleNumber: number | null = null;
+
   let state: GameState = createDailyState();
 
   function listsFor(length: number): WordLists {
@@ -122,9 +140,9 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     return listsFor(length).validGuesses;
   }
 
-  function createDailyState(): GameState {
+  function createDailyState(puzzleNumberOverride?: number): GameState {
     const lists = dailyLists;
-    const puzzleNumber = dailyPuzzleNumber(now());
+    const puzzleNumber = puzzleNumberOverride ?? dailyPuzzleNumber(now());
     const idx = (puzzleNumber - 1) % lists.solutions.length;
     const solution = lists.solutions[idx];
     const accented = lists.solutionsAccented[idx] ?? solution;
@@ -137,18 +155,23 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
       wordLength: DEFAULT_WORD_LENGTH,
     });
 
-    const stored = storage.readDaily();
-    if (stored && stored.puzzleNumber === puzzleNumber) {
-      // Rehydrate.
-      fresh.guesses = stored.guesses.slice();
-      fresh.evaluations = stored.evaluations.map((row) => row.slice());
-      fresh.currentRow = stored.guesses.length;
-      fresh.currentInput = '';
-      fresh.status = stored.status;
-      fresh.keyStates = replayKeyStates(fresh.guesses, fresh.evaluations);
-    } else if (stored && stored.puzzleNumber !== puzzleNumber) {
-      // Stale daily — clear it so we don't leak yesterday's progress.
-      storage.clearDaily();
+    // Only rehydrate from the `daily` slot when the requested puzzle IS
+    // today (i.e. no archive override). Archived plays always start fresh
+    // and never persist.
+    const isLive = puzzleNumberOverride === undefined;
+    if (isLive) {
+      const stored = storage.readDaily();
+      if (stored && stored.puzzleNumber === puzzleNumber) {
+        fresh.guesses = stored.guesses.slice();
+        fresh.evaluations = stored.evaluations.map((row) => row.slice());
+        fresh.currentRow = stored.guesses.length;
+        fresh.currentInput = '';
+        fresh.status = stored.status;
+        fresh.keyStates = replayKeyStates(fresh.guesses, fresh.evaluations);
+      } else if (stored && stored.puzzleNumber !== puzzleNumber) {
+        // Stale daily — clear it so we don't leak yesterday's progress.
+        storage.clearDaily();
+      }
     }
 
     return fresh;
@@ -168,6 +191,8 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
 
   function persistDaily(): void {
     if (state.mode !== 'daily' || state.puzzleNumber === null) return;
+    // Archived plays are throwaway: don't overwrite today's progress.
+    if (archivePuzzleNumber !== null) return;
     storage.writeDaily({
       puzzleNumber: state.puzzleNumber,
       guesses: state.guesses,
@@ -184,6 +209,8 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     ) {
       return;
     }
+    // Archived plays never touch dailyMeta or its streak.
+    if (archivePuzzleNumber !== null) return;
     const meta = storage.readDailyMeta();
     if (meta.lastCompletedPuzzleNumber === state.puzzleNumber) {
       // Already recorded; don't double-count on subsequent reloads.
@@ -193,6 +220,31 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     const attempts = won ? state.guesses.length : null;
     const next = nextDailyMeta(meta, state.puzzleNumber, won, attempts);
     storage.writeDailyMeta(next);
+  }
+
+  function applyStatsUpdate(won: boolean, attempts: number): void {
+    // Archived plays are practice; never count toward stats.
+    if (state.mode === 'daily' && archivePuzzleNumber !== null) return;
+    const prev = storage.readStats();
+    // Daily stats are anchored by puzzleNumber so we don't double-count
+    // the same daily across reloads. (Infinite games can't be re-detected
+    // this way — but rehydration only matters for daily, where puzzles
+    // persist; infinite resets on every new game so duplicate-counting
+    // isn't a risk.)
+    if (
+      state.mode === 'daily' &&
+      state.puzzleNumber !== null &&
+      prev.lastPlayedPuzzle !== null &&
+      prev.lastPlayedPuzzle === state.puzzleNumber
+    ) {
+      return;
+    }
+    const next = applyOutcome(prev, {
+      won,
+      attempts,
+      puzzleNumber: state.mode === 'daily' ? state.puzzleNumber : null,
+    });
+    storage.writeStats(next);
   }
 
   function applyEndOfGameForInfinite(): void {
@@ -216,13 +268,19 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
           if (state.mode === 'daily') applyEndOfGameForDaily();
           else applyEndOfGameForInfinite();
         }
+      } else if (eff.type === 'STATS_UPDATED') {
+        applyStatsUpdate(eff.won, eff.attempts);
       }
     }
   }
 
-  // If we rehydrated a completed daily game, ensure meta is recorded.
+  // If we rehydrated a completed daily game, ensure meta + stats are recorded.
   if (state.status !== 'playing' && state.mode === 'daily') {
     applyEndOfGameForDaily();
+    applyStatsUpdate(
+      state.status === 'won',
+      state.guesses.length,
+    );
   }
 
   return {
@@ -240,11 +298,35 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     setMode(mode: GameMode): void {
       if (state.mode === mode) return;
       if (mode === 'daily') {
+        // Switching back to daily exits any archive view.
+        archivePuzzleNumber = null;
         state = createDailyState();
         if (state.status !== 'playing') applyEndOfGameForDaily();
       } else {
         state = createInfiniteState(infiniteLength);
       }
+    },
+
+    loadArchive(puzzleNumber: number | null): void {
+      const today = dailyPuzzleNumber(now());
+      if (puzzleNumber === null || puzzleNumber >= today) {
+        // Returning to live daily — or asked for "today/future"; treat as live.
+        archivePuzzleNumber = null;
+        state = createDailyState();
+        if (state.status !== 'playing') applyEndOfGameForDaily();
+        return;
+      }
+      if (puzzleNumber < 1) return;
+      archivePuzzleNumber = puzzleNumber;
+      state = createDailyState(puzzleNumber);
+    },
+
+    isArchive(): boolean {
+      return archivePuzzleNumber !== null;
+    },
+
+    stats(): TermoStats {
+      return storage.readStats();
     },
 
     newInfinite(wordLength?: number): void {
