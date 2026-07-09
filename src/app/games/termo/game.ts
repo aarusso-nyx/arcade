@@ -64,6 +64,16 @@ export interface TermoOptions {
   initialMode?: GameMode;
   /** Initial infinite word length. Defaults to 5. */
   initialInfiniteLength?: number;
+  /**
+   * Opt-in soft-acceptance for well-formed but unknown guesses. Default OFF —
+   * dictionary stays authoritative. When enabled, an unknown guess that is a
+   * clean A-Z string of the right length is accepted with a yellow "palavra
+   * incomum" warning toast instead of the red "palavra inválida" shake.
+   *
+   * Exposed so a config/settings UI can wire it up later; the reducer keeps
+   * its strict default so the "real word?" guarantee isn't quietly weakened.
+   */
+  lenient?: boolean;
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -112,6 +122,7 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
   const storage = opts.storage ?? createTermoStorage();
   const now = opts.now ?? ((): Date => new Date());
   const rng = opts.rng ?? Math.random;
+  const lenient = opts.lenient === true;
 
   let infiniteLength: number =
     opts.initialInfiniteLength ?? DEFAULT_WORD_LENGTH;
@@ -289,7 +300,12 @@ export function createTermoGame(opts: TermoOptions): TermoGame {
     },
 
     dispatch(action: Action): Effect[] {
-      const result = reduce(state, action, validGuessesFor(state.wordLength));
+      const result = reduce(
+        state,
+        action,
+        validGuessesFor(state.wordLength),
+        { lenient },
+      );
       state = result.state;
       handleEffects(result.effects);
       return result.effects;

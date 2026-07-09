@@ -29,9 +29,11 @@ export type Action =
   | { type: 'BACKSPACE' }
   | { type: 'SUBMIT' };
 
+export type ToastVariant = 'error' | 'warning';
+
 export type Effect =
   | { type: 'SHAKE_ROW'; row: number }
-  | { type: 'TOAST'; message: string }
+  | { type: 'TOAST'; message: string; variant?: ToastVariant }
   | { type: 'FLIP_REVEAL'; row: number }
   | { type: 'BOUNCE_WIN'; row: number }
   | { type: 'PERSIST' }
@@ -61,6 +63,30 @@ export function maxAttemptsFor(wordLength: number): number {
 
 export interface ValidGuessSource {
   has(word: string): boolean;
+}
+
+/**
+ * Optional per-dispatch behavior tweaks for the reducer.
+ *
+ * `lenient` (default: false) enables a soft-acceptance fallback: if the
+ * player submits a well-formed A-Z string that isn't in the valid-guesses
+ * set, the reducer accepts it anyway and surfaces a yellow "palavra incomum"
+ * warning toast instead of shaking. This is a deliberate opt-in — the
+ * dictionary stays authoritative by default, so the "is it a real word?"
+ * guarantee isn't silently weakened.
+ */
+export interface ReduceOptions {
+  lenient?: boolean;
+}
+
+/** Guesses must be uppercase A-Z only (no accents, digits, punctuation). */
+export function isWellFormedGuess(guess: string, wordLength: number): boolean {
+  if (guess.length !== wordLength) return false;
+  for (let i = 0; i < guess.length; i++) {
+    const c = guess.charCodeAt(i);
+    if (c < 65 || c > 90) return false;
+  }
+  return true;
 }
 
 const KEY_RANK: Record<KeyState, number> = {
@@ -134,6 +160,7 @@ export function reduce(
   state: GameState,
   action: Action,
   validGuesses: ValidGuessSource,
+  options: ReduceOptions = {},
 ): ReduceResult {
   if (state.status !== 'playing') {
     return { state, effects: [] };
@@ -166,17 +193,22 @@ export function reduce(
           state,
           effects: [
             { type: 'SHAKE_ROW', row: state.currentRow },
-            { type: 'TOAST', message: 'letras faltando' },
+            { type: 'TOAST', message: 'letras faltando', variant: 'error' },
           ],
         };
       }
       const guess = state.currentInput;
-      if (!validGuesses.has(guess)) {
+      const isKnown = validGuesses.has(guess);
+      const lenientAccept =
+        !isKnown &&
+        options.lenient === true &&
+        isWellFormedGuess(guess, state.wordLength);
+      if (!isKnown && !lenientAccept) {
         return {
           state,
           effects: [
             { type: 'SHAKE_ROW', row: state.currentRow },
-            { type: 'TOAST', message: 'palavra inválida' },
+            { type: 'TOAST', message: 'palavra inválida', variant: 'error' },
           ],
         };
       }
@@ -200,6 +232,13 @@ export function reduce(
       const effects: Effect[] = [
         { type: 'FLIP_REVEAL', row: state.currentRow },
       ];
+      if (lenientAccept) {
+        effects.push({
+          type: 'TOAST',
+          message: 'palavra incomum',
+          variant: 'warning',
+        });
+      }
       if (isWin) effects.push({ type: 'BOUNCE_WIN', row: state.currentRow });
       effects.push({ type: 'PERSIST' });
       if (isWin || isLoss) {

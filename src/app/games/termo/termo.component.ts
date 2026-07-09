@@ -28,7 +28,7 @@ import {
   recentArchiveEntries,
   type ArchiveEntry,
 } from './archive';
-import type { Effect, GameMode, GameState, KeyState } from './state';
+import type { Effect, GameMode, GameState, KeyState, ToastVariant } from './state';
 
 interface TileView {
   letter: string;
@@ -294,7 +294,12 @@ const TOAST_DURATION_MS = 2000;
         </div>
 
         @if (toast(); as t) {
-          <div class="toast" role="status" aria-live="polite">{{ t }}</div>
+          <div
+            class="toast"
+            [attr.data-variant]="toastVariant()"
+            role="status"
+            aria-live="polite"
+          >{{ t }}</div>
         }
 
         @if (status() !== 'playing') {
@@ -565,6 +570,10 @@ const TOAST_DURATION_MS = 2000;
       pointer-events: none;
       z-index: 10;
     }
+    .toast[data-variant="warning"] {
+      background: #f5c542;
+      color: #1a1500;
+    }
 
     .result {
       text-align: center;
@@ -716,6 +725,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   protected readonly loadError = signal<string | null>(null);
   protected readonly stateVersion = signal(0); // bump on dispatch to recompute views
   protected readonly toast = signal<string | null>(null);
+  protected readonly toastVariant = signal<ToastVariant>('error');
   protected readonly shakingRow = signal<number | null>(null);
 
   /** Indices of tiles by [row][col] that are currently in flip-revealing state. */
@@ -1143,7 +1153,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
   private processEffects(effects: Effect[]): void {
     for (const eff of effects) {
       if (eff.type === 'TOAST') {
-        this.showToast(eff.message);
+        this.showToast(eff.message, eff.variant ?? 'error');
       } else if (eff.type === 'SHAKE_ROW') {
         this.triggerShake(eff.row);
         this.audio?.play('invalid');
@@ -1265,8 +1275,9 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
     this.infiniteStreak.set(0);
   }
 
-  private showToast(msg: string): void {
+  private showToast(msg: string, variant: ToastVariant = 'error'): void {
     if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.toastVariant.set(variant);
     this.toast.set(msg);
     this.toastTimer = window.setTimeout(() => {
       this.toast.set(null);

@@ -2,6 +2,7 @@ import {
   bumpKeyState,
   createInitialState,
   emptyKeyStates,
+  isWellFormedGuess,
   reduce,
   replayKeyStates,
   type GameState,
@@ -257,6 +258,123 @@ describe('reduce with variable wordLength', () => {
     expect(state.maxAttempts).toBe(8);
     expect(state.evaluations[0]).toHaveSize(7);
     expect(state.evaluations[0].every((e) => e === 'correct')).toBeTrue();
+  });
+});
+
+describe('isWellFormedGuess', () => {
+  it('accepts a clean uppercase A-Z string of the target length', () => {
+    expect(isWellFormedGuess('FALOU', 5)).toBeTrue();
+  });
+
+  it('rejects mismatched length', () => {
+    expect(isWellFormedGuess('FALO', 5)).toBeFalse();
+    expect(isWellFormedGuess('FALOUX', 5)).toBeFalse();
+  });
+
+  it('rejects digits, punctuation, and non-ASCII letters', () => {
+    expect(isWellFormedGuess('FAL0U', 5)).toBeFalse();
+    expect(isWellFormedGuess('FAL-U', 5)).toBeFalse();
+    expect(isWellFormedGuess('FALÃO', 5)).toBeFalse(); // normalize happens upstream
+  });
+
+  it('rejects lowercase (reducer input is expected pre-uppercased)', () => {
+    expect(isWellFormedGuess('falou', 5)).toBeFalse();
+  });
+});
+
+describe('reduce with lenient option', () => {
+  it('default (lenient omitted) still rejects unknown words with a shake', () => {
+    const s = { ...fresh('ABATE'), currentInput: 'FALOU' };
+    const { state, effects } = reduce(s, { type: 'SUBMIT' }, dict('ABATE'));
+    expect(state.currentRow).toBe(0);
+    expect(effects.some((e) => e.type === 'SHAKE_ROW')).toBeTrue();
+    expect(
+      effects.some(
+        (e) => e.type === 'TOAST' && e.message === 'palavra inválida',
+      ),
+    ).toBeTrue();
+  });
+
+  it('explicit lenient=false behaves the same as the default', () => {
+    const s = { ...fresh('ABATE'), currentInput: 'FALOU' };
+    const { effects } = reduce(
+      s,
+      { type: 'SUBMIT' },
+      dict('ABATE'),
+      { lenient: false },
+    );
+    expect(effects.some((e) => e.type === 'SHAKE_ROW')).toBeTrue();
+  });
+
+  it('lenient=true accepts a well-formed unknown guess with a warning toast', () => {
+    const s = { ...fresh('ABATE'), currentInput: 'FALOU' };
+    const { state, effects } = reduce(
+      s,
+      { type: 'SUBMIT' },
+      dict('ABATE'),
+      { lenient: true },
+    );
+    expect(state.guesses).toEqual(['FALOU']);
+    expect(state.currentRow).toBe(1);
+    expect(state.currentInput).toBe('');
+    expect(state.status).toBe('playing');
+    expect(effects.some((e) => e.type === 'SHAKE_ROW')).toBeFalse();
+    expect(effects.some((e) => e.type === 'FLIP_REVEAL')).toBeTrue();
+    expect(
+      effects.some(
+        (e) =>
+          e.type === 'TOAST' &&
+          e.message === 'palavra incomum' &&
+          e.variant === 'warning',
+      ),
+    ).toBeTrue();
+  });
+
+  it('lenient=true does NOT emit the warning toast for known dictionary words', () => {
+    const s = { ...fresh('ABATE'), currentInput: 'BANCO' };
+    const { effects } = reduce(
+      s,
+      { type: 'SUBMIT' },
+      dict('ABATE', 'BANCO'),
+      { lenient: true },
+    );
+    expect(
+      effects.some(
+        (e) => e.type === 'TOAST' && e.message === 'palavra incomum',
+      ),
+    ).toBeFalse();
+  });
+
+  it('lenient=true still shakes when the guess has bad characters', () => {
+    // Reducer never sees non-A-Z from TYPE_LETTER, but if state was mutated
+    // externally (or a future entry path allows it), lenient must not paper
+    // over ill-formed input.
+    const s = { ...fresh('ABATE'), currentInput: 'FAL0U' };
+    const { state, effects } = reduce(
+      s,
+      { type: 'SUBMIT' },
+      dict('ABATE'),
+      { lenient: true },
+    );
+    expect(state.currentRow).toBe(0);
+    expect(effects.some((e) => e.type === 'SHAKE_ROW')).toBeTrue();
+    expect(
+      effects.some(
+        (e) => e.type === 'TOAST' && e.message === 'palavra inválida',
+      ),
+    ).toBeTrue();
+  });
+
+  it('lenient=true can result in a WIN when the guess happens to be the solution', () => {
+    const s = { ...fresh('FALOU'), currentInput: 'FALOU' };
+    const { state, effects } = reduce(
+      s,
+      { type: 'SUBMIT' },
+      dict(), // solution not in the "valid guesses" set
+      { lenient: true },
+    );
+    expect(state.status).toBe('won');
+    expect(effects.some((e) => e.type === 'BOUNCE_WIN')).toBeTrue();
   });
 });
 
