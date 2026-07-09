@@ -56,7 +56,7 @@ export function render(
   // the snake passes through the top row.
   drawHud(ctx, state, hud.highScore, cfg);
 
-  if (state.status === 'paused') drawOverlay(ctx, w, h, 'Paused', 'Space to resume');
+  if (state.status === 'paused') drawPauseOverlay(ctx, w, h, nowMs);
   else if (state.status === 'gameover') {
     const cause = state.deathCause === 'wall' ? 'Hit a wall' : 'Bit yourself';
     drawOverlay(ctx, w, h, 'Game over', `${cause} — Enter to restart`);
@@ -258,4 +258,65 @@ function drawOverlay(
   ctx.fillStyle = COLORS.hudDim;
   ctx.font = '14px system-ui, sans-serif';
   ctx.fillText(subtitle, w / 2, h / 2 + 16);
+}
+
+function drawPauseOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  nowMs: number,
+): void {
+  const titleSize = 18;
+  const fontFamily = pixelFontFamily();
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(11, 13, 16, 0.7)';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const cy = h / 2;
+  const titleY = cy - titleSize * 0.3;
+
+  ctx.font = `${titleSize}px ${fontFamily}`;
+  const titleW = ctx.measureText('PAUSED').width;
+
+  // Pulsing chevron arrows flanking the title.
+  const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(nowMs / 380));
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#4EB0D9';
+  const chevronGap = titleSize * 0.9;
+  const chevronSize = titleSize * 0.6;
+  drawChevronArrow(ctx, w / 2 - titleW / 2 - chevronGap, titleY, chevronSize, 'right');
+  drawChevronArrow(ctx, w / 2 + titleW / 2 + chevronGap, titleY, chevronSize, 'left');
+  ctx.globalAlpha = 1;
+
+  // Title.
+  ctx.fillStyle = '#4EB0D9';
+  ctx.fillText('PAUSED', w / 2, titleY);
+
+  // Hint below.
+  ctx.font = `7px ${fontFamily}`;
+  ctx.fillStyle = COLORS.hudDim;
+  ctx.fillText('Space / P to resume · Esc to quit', w / 2, cy + titleSize * 1.1);
+
+  ctx.restore();
+}
+
+function drawChevronArrow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  facing: 'left' | 'right',
+): void {
+  const half = size / 2;
+  const dx = facing === 'right' ? half : -half;
+  ctx.beginPath();
+  ctx.moveTo(cx - dx, cy - half);
+  ctx.lineTo(cx + dx, cy);
+  ctx.lineTo(cx - dx, cy + half);
+  ctx.closePath();
+  ctx.fill();
 }

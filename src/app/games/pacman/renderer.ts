@@ -1,5 +1,6 @@
 import {
   CANVAS_W,
+  CANVAS_H,
   HUD_TOP_H,
   TILE_SIZE,
   GRID_W,
@@ -132,13 +133,16 @@ export function render(
     drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'READY!', COLORS.ready);
   } else if (world.game.phase === 'gameover') {
     drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'GAME OVER', COLORS.gameOver);
-  } else if (world.game.phase === 'paused') {
-    drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'PAUSED', COLORS.hud);
   }
   ctx.restore();
 
   // Bottom HUD.
   drawBottomHud(ctx, world.game);
+
+  // Pause overlay covers the entire canvas (drawn after HUDs so it dims them too).
+  if (world.game.phase === 'paused') {
+    drawPauseOverlay(ctx, CANVAS_W, CANVAS_H, nowMs);
+  }
 }
 
 function drawTopHud(ctx: CanvasRenderingContext2D, game: GameState): void {
@@ -310,6 +314,63 @@ function drawCenterText(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, w / 2, h / 2 + 16);
+}
+
+function drawPauseOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  nowMs: number,
+): void {
+  const titleSize = 16;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const cy = h / 2;
+  const titleY = cy - titleSize * 0.3;
+
+  ctx.font = `${titleSize}px ${PIXEL_FONT}`;
+  const titleW = ctx.measureText('PAUSED').width;
+
+  const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(nowMs / 380));
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#4EB0D9';
+  const chevronGap = titleSize * 0.8;
+  const chevronSize = titleSize * 0.55;
+  drawChevronArrow(ctx, w / 2 - titleW / 2 - chevronGap, titleY, chevronSize, 'right');
+  drawChevronArrow(ctx, w / 2 + titleW / 2 + chevronGap, titleY, chevronSize, 'left');
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#4EB0D9';
+  ctx.fillText('PAUSED', w / 2, titleY);
+
+  ctx.font = `6px ${PIXEL_FONT}`;
+  ctx.fillStyle = '#8a8f99';
+  ctx.fillText('Space / P to resume · Esc to quit', w / 2, cy + titleSize * 1.1);
+
+  ctx.restore();
+}
+
+function drawChevronArrow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  facing: 'left' | 'right',
+): void {
+  const half = size / 2;
+  const dx = facing === 'right' ? half : -half;
+  ctx.beginPath();
+  ctx.moveTo(cx - dx, cy - half);
+  ctx.lineTo(cx + dx, cy);
+  ctx.lineTo(cx - dx, cy + half);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function buildWallShapes(maze: Maze): WallShape[] {

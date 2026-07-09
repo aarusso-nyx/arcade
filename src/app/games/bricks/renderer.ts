@@ -112,6 +112,10 @@ function drawBall(ctx: CanvasRenderingContext2D, state: BricksState, cfg: Bricks
 }
 
 function drawOverlay(ctx: CanvasRenderingContext2D, state: BricksState, cfg: BricksConfig): void {
+  if (state.status === 'paused') {
+    drawPauseOverlay(ctx, cfg.width, cfg.height);
+    return;
+  }
   let title = '';
   let subtitle = '';
   if (state.status === 'idle') {
@@ -120,9 +124,6 @@ function drawOverlay(ctx: CanvasRenderingContext2D, state: BricksState, cfg: Bri
   } else if (state.status === 'ready' && state.messageTimer < 25) {
     title = 'READY';
     subtitle = 'Space to launch';
-  } else if (state.status === 'paused') {
-    title = 'PAUSED';
-    subtitle = 'P to resume';
   } else if (state.status === 'levelclear') {
     title = `LEVEL ${state.level} CLEAR`;
     subtitle = 'Next rack';
@@ -143,6 +144,65 @@ function drawOverlay(ctx: CanvasRenderingContext2D, state: BricksState, cfg: Bri
   ctx.fillStyle = COLORS.dim;
   ctx.fillText(subtitle, cfg.width / 2, 314);
   ctx.textAlign = 'left';
+}
+
+function drawPauseOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+): void {
+  const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const titleSize = 24;
+  const fontFamily = '"Press Start 2P", monospace';
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(11, 13, 16, 0.7)';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const cy = h / 2;
+  const titleY = cy - titleSize * 0.3;
+
+  ctx.font = `${titleSize}px ${fontFamily}`;
+  const titleW = ctx.measureText('PAUSED').width;
+
+  const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(nowMs / 380));
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#4EB0D9';
+  const chevronGap = titleSize * 0.9;
+  const chevronSize = titleSize * 0.6;
+  drawChevronArrow(ctx, w / 2 - titleW / 2 - chevronGap, titleY, chevronSize, 'right');
+  drawChevronArrow(ctx, w / 2 + titleW / 2 + chevronGap, titleY, chevronSize, 'left');
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#4EB0D9';
+  ctx.fillText('PAUSED', w / 2, titleY);
+
+  ctx.font = `10px ${fontFamily}`;
+  ctx.fillStyle = COLORS.dim;
+  ctx.fillText('Space / P to resume · Esc to quit', w / 2, cy + titleSize * 1.0);
+
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+function drawChevronArrow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  facing: 'left' | 'right',
+): void {
+  const half = size / 2;
+  const dx = facing === 'right' ? half : -half;
+  ctx.beginPath();
+  ctx.moveTo(cx - dx, cy - half);
+  ctx.lineTo(cx + dx, cy);
+  ctx.lineTo(cx - dx, cy + half);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function roundRect(
