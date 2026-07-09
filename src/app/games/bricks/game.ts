@@ -3,8 +3,10 @@ import {
   createKeyboard,
   createLoop,
   createStorage,
+  getCurrentTheme,
   mountCanvas,
   registerSounds,
+  subscribeTheme,
   type Audio,
   type CanvasMount,
   type Keyboard,
@@ -60,7 +62,7 @@ export function createBricksGame(host: HTMLElement, opts: BricksOptions = {}): B
     logicalWidth: cfg.width,
     logicalHeight: cfg.height,
     scaling: 'fit',
-    background: '#0b0d10',
+    background: getCurrentTheme().games.bricks.bg,
   });
   const keyboard: Keyboard = createKeyboard({ preventDefault: PREVENT_DEFAULT_CODES });
   let state = createInitialState(cfg, highScore);
@@ -136,9 +138,11 @@ export function createBricksGame(host: HTMLElement, opts: BricksOptions = {}): B
   };
 
   const render = (): void => {
-    canvas.beginFrame('#0b0d10');
+    canvas.beginFrame(getCurrentTheme().games.bricks.bg);
     renderBricks(canvas.ctx, state, cfg);
   };
+
+  const unsubTheme = subscribeTheme(() => render());
 
   const loop: Loop = createLoop({
     tickIntervalMs: cfg.tickIntervalMs,
@@ -173,6 +177,7 @@ export function createBricksGame(host: HTMLElement, opts: BricksOptions = {}): B
       canvas.destroy();
       mountHost.remove();
       audio.destroy();
+      unsubTheme();
       subscribers.clear();
     },
     toggleMute(): boolean {

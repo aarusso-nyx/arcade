@@ -6,3 +6,4 @@ export * from './render';
 export * from './state';
 export * from './audio';
 export * from './replay';
+export * from './theme';

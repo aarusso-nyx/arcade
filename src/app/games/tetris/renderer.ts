@@ -1,10 +1,22 @@
+import { getCurrentTheme, type TetrisPalette } from '../../../core';
 import { dropY } from './board';
-import { BUFFER_ROWS, COLS, PALETTE, type TetrisConfig } from './config';
+import { BUFFER_ROWS, COLS, type TetrisConfig } from './config';
 import { pieceCells } from './pieces';
 import type { ActivePiece, GameState, PieceType } from './types';
 
-const BG = '#0b0d10';
-const GRID_LINE = 'rgba(255,255,255,0.04)';
+/**
+ * All colours (background, grid, tetromino palette, HUD tint, pause overlay,
+ * replay badge) resolve through the active theme. Reading them per-frame
+ * keeps live theme switches cheap: no re-mount, no cached colours to
+ * invalidate — the next frame just paints with the new values.
+ */
+function palette(): TetrisPalette {
+  return getCurrentTheme().games.tetris;
+}
+
+function pieceColor(type: PieceType, p: TetrisPalette): string {
+  return p.pieces[type];
+}
 
 function darken(hex: string, amount: number): string {
   // hex format #RRGGBB
@@ -25,7 +37,6 @@ function drawCell(
   color: string,
   cell: number,
 ): void {
-  // gy is grid y (with buffer); subtract BUFFER_ROWS for canvas y.
   const py = (gy - BUFFER_ROWS) * cell;
   if (py < -cell) return;
   const px = gx * cell;
@@ -59,15 +70,15 @@ export function renderPlayfield(
   state: GameState,
   cfg: TetrisConfig,
 ): void {
+  const p = palette();
   const cell = cfg.cellPx;
   const w = COLS * cell;
   const h = cfg.rows * cell;
 
-  ctx.fillStyle = BG;
+  ctx.fillStyle = p.bg;
   ctx.fillRect(0, 0, w, h);
 
-  // Background grid lines.
-  ctx.strokeStyle = GRID_LINE;
+  ctx.strokeStyle = p.gridLine;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = 1; x < COLS; x++) {
@@ -86,7 +97,7 @@ export function renderPlayfield(
     for (let gx = 0; gx < COLS; gx++) {
       const c = row[gx];
       if (c === 0) continue;
-      drawCell(ctx, gx, gy, PALETTE[c as PieceType], cell);
+      drawCell(ctx, gx, gy, pieceColor(c as PieceType, p), cell);
     }
   }
 
@@ -98,7 +109,7 @@ export function renderPlayfield(
       const ghost: ActivePiece = { ...active, y: gy };
       const cells = pieceCells(ghost.type, ghost.rotation, ghost.x, ghost.y);
       for (const [x, y] of cells) {
-        if (y >= BUFFER_ROWS - 1) drawGhostCell(ctx, x, y, PALETTE[ghost.type], cell);
+        if (y >= BUFFER_ROWS - 1) drawGhostCell(ctx, x, y, pieceColor(ghost.type, p), cell);
       }
     }
   }
@@ -107,7 +118,7 @@ export function renderPlayfield(
   if (active) {
     const cells = pieceCells(active.type, active.rotation, active.x, active.y);
     for (const [x, y] of cells) {
-      if (y >= BUFFER_ROWS - 1) drawCell(ctx, x, y, PALETTE[active.type], cell);
+      if (y >= BUFFER_ROWS - 1) drawCell(ctx, x, y, pieceColor(active.type, p), cell);
     }
   }
 
@@ -116,7 +127,7 @@ export function renderPlayfield(
     const t = Math.max(0, Math.min(1, state.lineClearTimerMs / cfg.lineClearAnimMs));
     ctx.save();
     ctx.globalAlpha = t;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = p.lineClearFlash;
     for (const gy of state.lineClearRows) {
       const py = (gy - BUFFER_ROWS) * cell;
       ctx.fillRect(0, py, w, cell);
@@ -126,12 +137,12 @@ export function renderPlayfield(
 
   // Pause / gameover overlay.
   if (state.status === 'paused') {
-    drawPauseOverlay(ctx, w, h);
+    drawPauseOverlay(ctx, w, h, p);
   } else if (state.status === 'gameover') {
     const reason = state.topOutReason === 'lock-out' ? 'Lock-out' : 'Block-out';
-    drawOverlay(ctx, w, h, 'Game Over', `${reason} — Press Enter to retry`);
+    drawOverlay(ctx, w, h, 'Game Over', `${reason} — Press Enter to retry`, p);
   } else if (state.status === 'idle') {
-    drawOverlay(ctx, w, h, 'Tetris', 'Press Enter to play');
+    drawOverlay(ctx, w, h, 'Tetris', 'Press Enter to play', p);
   }
 }
 
@@ -141,17 +152,18 @@ function drawOverlay(
   h: number,
   title: string,
   hint: string,
+  p: TetrisPalette,
 ): void {
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillStyle = p.overlayBg;
   ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = p.overlayFg;
   ctx.font = 'bold 28px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(title, w / 2, h / 2 - 12);
   ctx.font = '13px system-ui, sans-serif';
-  ctx.fillStyle = '#bbbbbb';
+  ctx.fillStyle = p.overlaySubtitle;
   ctx.fillText(hint, w / 2, h / 2 + 16);
   ctx.restore();
 }
@@ -160,13 +172,14 @@ function drawPauseOverlay(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
+  p: TetrisPalette,
 ): void {
   const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const titleSize = 18;
   const fontFamily = '"Press Start 2P", monospace';
 
   ctx.save();
-  ctx.fillStyle = 'rgba(11, 13, 16, 0.7)';
+  ctx.fillStyle = p.overlayBg;
   ctx.fillRect(0, 0, w, h);
 
   ctx.textAlign = 'center';
@@ -180,18 +193,18 @@ function drawPauseOverlay(
 
   const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(nowMs / 380));
   ctx.globalAlpha = pulse;
-  ctx.fillStyle = '#4EB0D9';
+  ctx.fillStyle = p.pauseAccent;
   const chevronGap = titleSize * 0.9;
   const chevronSize = titleSize * 0.6;
   drawChevronArrow(ctx, w / 2 - titleW / 2 - chevronGap, titleY, chevronSize, 'right');
   drawChevronArrow(ctx, w / 2 + titleW / 2 + chevronGap, titleY, chevronSize, 'left');
   ctx.globalAlpha = 1;
 
-  ctx.fillStyle = '#4EB0D9';
+  ctx.fillStyle = p.pauseAccent;
   ctx.fillText('PAUSED', w / 2, titleY);
 
   ctx.font = `7px ${fontFamily}`;
-  ctx.fillStyle = '#8a8f99';
+  ctx.fillStyle = p.hudDim;
   ctx.fillText('Space / P to resume · Esc to quit', w / 2, cy + titleSize * 1.1);
 
   ctx.restore();
@@ -214,6 +227,29 @@ function drawChevronArrow(
   ctx.fill();
 }
 
+/**
+ * Themed "REPLAY" badge drawn on top of the playfield during replay playback.
+ * Companion to the Snake variant — kept here so tetris-specific colour tokens
+ * (rather than a shared draw helper) can drive the styling.
+ */
+export function drawReplayBadge(ctx: CanvasRenderingContext2D): void {
+  const p = palette();
+  ctx.save();
+  const w = 78;
+  const h = 20;
+  ctx.fillStyle = p.replayBadgeBg;
+  ctx.fillRect(8, 8, w, h);
+  ctx.strokeStyle = p.replayBadgeBorder;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(8, 8, w, h);
+  ctx.fillStyle = p.replayBadgeFg;
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText('● REPLAY', 8 + w / 2, 8 + h / 2 + 1);
+  ctx.restore();
+}
+
 /** Render a single tetromino (in spawn orientation) inside a preview box. */
 export function renderPreviewPiece(
   ctx: CanvasRenderingContext2D,
@@ -222,6 +258,7 @@ export function renderPreviewPiece(
   originY: number,
   cell: number,
 ): void {
+  const p = palette();
   const offsets = pieceCells(type, 0, 0, 0);
   // Compute bounding box.
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -238,7 +275,7 @@ export function renderPreviewPiece(
   for (const [x, y] of offsets) {
     const px = ox + (x - minX) * cell;
     const py = oy + (y - minY) * cell;
-    const color = PALETTE[type];
+    const color = pieceColor(type, p);
     ctx.fillStyle = darken(color, 0.25);
     ctx.fillRect(px + 1, py + 1, cell - 2, cell - 2);
     ctx.strokeStyle = color;
@@ -253,20 +290,20 @@ export function renderSidePanel(
   state: GameState,
   cfg: TetrisConfig,
 ): void {
+  const p = palette();
   const cell = cfg.previewCellPx;
 
-  // We render: a "HOLD" box at top, then a "NEXT" list under it.
   const pad = 12;
   const boxW = 5 * cell;
   const boxH = 4 * cell;
 
   // HOLD
-  ctx.fillStyle = '#1a1d23';
+  ctx.fillStyle = p.panelBg;
   ctx.fillRect(pad, pad, boxW, boxH);
-  ctx.strokeStyle = '#2c3038';
+  ctx.strokeStyle = p.panelBorder;
   ctx.lineWidth = 1;
   ctx.strokeRect(pad + 0.5, pad + 0.5, boxW, boxH);
-  ctx.fillStyle = '#8a8f99';
+  ctx.fillStyle = p.hudDim;
   ctx.font = '11px system-ui';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
@@ -281,11 +318,11 @@ export function renderSidePanel(
   const nextTop = pad + boxH + pad;
   const nextRowH = 3 * cell;
   const nextH = cfg.nextQueueLength * nextRowH + 18;
-  ctx.fillStyle = '#1a1d23';
+  ctx.fillStyle = p.panelBg;
   ctx.fillRect(pad, nextTop, boxW, nextH);
-  ctx.strokeStyle = '#2c3038';
+  ctx.strokeStyle = p.panelBorder;
   ctx.strokeRect(pad + 0.5, nextTop + 0.5, boxW, nextH);
-  ctx.fillStyle = '#8a8f99';
+  ctx.fillStyle = p.hudDim;
   ctx.fillText('NEXT', pad + 4, nextTop + 4);
   if (state.status !== 'paused') {
     for (let i = 0; i < state.next.length && i < cfg.nextQueueLength; i++) {

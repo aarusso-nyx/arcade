@@ -3,9 +3,11 @@ import {
   createLoop,
   createKeyboard,
   createStorage,
+  getCurrentTheme,
   mountCanvas,
   mulberry32,
   registerSounds,
+  subscribeTheme,
   type Audio,
   type Loop,
   type Keyboard,
@@ -16,7 +18,7 @@ import {
 import { SNAKE_SFX } from './audio';
 import { DEFAULT_CONFIG, SnakeConfig, tickIntervalFor } from './config';
 import { DirectionQueue, KEY_TO_DIRECTION, PREVENT_DEFAULT_CODES } from './input';
-import { render } from './renderer';
+import { drawReplayBadge, render } from './renderer';
 import {
   createSnakeRecorder,
   createSnakeReplayCursor,
@@ -128,7 +130,7 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     logicalWidth: cfg.cols * cfg.cellSize,
     logicalHeight: cfg.rows * cfg.cellSize,
     scaling: 'fit',
-    background: '#0b0d10',
+    background: getCurrentTheme().games.snake.bg,
   });
 
   const keyboard: Keyboard = createKeyboard({
@@ -306,30 +308,14 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     // beginFrame clears the canvas backing store AND applies ctx.scale, so
     // the renderer's logical (0..cols*cellSize, 0..rows*cellSize) drawing
     // fills the full canvas regardless of the host's actual size.
-    mount.beginFrame('#0b0d10');
+    mount.beginFrame(getCurrentTheme().games.snake.bg);
     render(mount.ctx, state, cfg, { highScore }, performance.now(), alpha);
     if (replayMode) drawReplayBadge(mount.ctx);
   };
 
-  const drawReplayBadge = (ctx: CanvasRenderingContext2D): void => {
-    // Kept intentionally isolated in game.ts (not renderer.ts) so the visual
-    // renderer stays a pure function of game state — the "REPLAY" indicator
-    // is orchestration metadata, not simulation state.
-    ctx.save();
-    const w = 78;
-    const h = 20;
-    ctx.fillStyle = 'rgba(240,60,60,0.85)';
-    ctx.fillRect(8, 8, w, h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(8, 8, w, h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-    ctx.fillText('● REPLAY', 8 + w / 2, 8 + h / 2 + 1);
-    ctx.restore();
-  };
+  // React to live theme changes: re-render with the new palette immediately
+  // so users see the swap without waiting for the next scheduled tick.
+  const unsubTheme = subscribeTheme(() => draw());
 
   const loop: Loop = createLoop({
     tickIntervalMs: cfg.startTickMs,
@@ -355,6 +341,7 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
       keyboard.detach();
       mount.destroy();
       audio.destroy();
+      unsubTheme();
       subscribers.clear();
     },
     get state(): SnakeState {

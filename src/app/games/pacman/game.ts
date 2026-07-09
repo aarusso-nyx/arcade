@@ -3,9 +3,11 @@ import {
   createKeyboard,
   createLoop,
   createStorage,
+  getCurrentTheme,
   mountCanvas,
   mulberry32,
   registerSounds,
+  subscribeTheme,
   type Audio,
   type CanvasMount,
   type Keyboard,
@@ -89,9 +91,12 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
     logicalWidth: CANVAS_W,
     logicalHeight: CANVAS_H,
     scaling: 'pixel-art',
-    background: '#000000',
+    background: getCurrentTheme().games.pacman.bg,
   });
-  const mazeCache: MazeCache = buildMazeCache(maze);
+  // The maze cache bakes wall + door pixels using the active palette. When
+  // the theme swaps live we rebuild the cache and repaint; the subscribe
+  // call is deferred to after `draw` is defined below so we can call into it.
+  let mazeCache: MazeCache = buildMazeCache(maze);
 
   const keyboard: Keyboard = createKeyboard({
     preventDefault: PREVENT_DEFAULT_CODES,
@@ -187,9 +192,14 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
     const now = performance.now();
     const flashing =
       game.phase === 'levelclear' && Math.floor(game.phaseTimer / 15) % 2 === 0;
-    mount.beginFrame('#000000');
+    mount.beginFrame(getCurrentTheme().games.pacman.bg);
     render(mount.ctx, world, mazeCache, now, flashing);
   };
+
+  const unsubTheme = subscribeTheme(() => {
+    mazeCache = buildMazeCache(maze);
+    draw(0);
+  });
 
   const loop: Loop = createLoop({
     tickIntervalMs: TICK_MS,
@@ -215,6 +225,7 @@ export function createPacmanGame(host: HTMLElement, opts: PacmanOptions = {}): P
       keyboard.detach();
       mount.destroy();
       audio.destroy();
+      unsubTheme();
       subscribers.clear();
     },
     get state(): GameState {

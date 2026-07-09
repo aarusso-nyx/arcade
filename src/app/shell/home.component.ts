@@ -1,5 +1,12 @@
-import { ChangeDetectionStrategy, Component, HostListener, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import {
+  getCurrentTheme,
+  listThemes,
+  setActiveTheme,
+  subscribeTheme,
+  type Theme,
+} from '../../core';
 import { tryNavigate } from '../shared/arcade-shortcuts';
 import { PacmanPreviewComponent } from './previews/pacman-preview';
 import { TetrisPreviewComponent } from './previews/tetris-preview';
@@ -73,7 +80,21 @@ const GAMES: readonly GameEntry[] = [
       </ul>
 
       <section class="guide">
-        <h2>Quick reference</h2>
+        <div class="guide-head">
+          <h2>Quick reference</h2>
+          <label class="theme-picker">
+            <span class="theme-label">Theme</span>
+            <select
+              [value]="activeThemeId()"
+              (change)="onThemeChange($event)"
+              aria-label="Select arcade theme"
+            >
+              @for (t of themes; track t.id) {
+                <option [value]="t.id" [title]="t.description">{{ t.name }}</option>
+              }
+            </select>
+          </label>
+        </div>
         <table>
           <tr><td><kbd>0</kbd> – <kbd>5</kbd></td><td>Jump between home, Pac-Man, Tetris, Snake, Termo, Bricks from any screen</td></tr>
           <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>In-game instructions dialog</td></tr>
@@ -196,13 +217,57 @@ const GAMES: readonly GameEntry[] = [
     .card:hover .title { color: var(--nyx-brand-hi); }
 
     .guide { color: var(--nyx-fg-dim); font-size: 0.85rem; }
+    .guide-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: 0 0 0.6rem;
+    }
     .guide h2 {
       font-family: var(--nyx-pixel-font);
       font-size: 0.75rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--nyx-brand);
-      margin: 0 0 0.6rem;
+      margin: 0;
+    }
+    .theme-picker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: system-ui, sans-serif;
+      font-size: 0.75rem;
+      color: var(--nyx-fg-dim);
+    }
+    .theme-picker .theme-label {
+      font-family: var(--nyx-pixel-font);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.65rem;
+      color: var(--nyx-brand);
+    }
+    .theme-picker select {
+      appearance: none;
+      background: var(--nyx-bg-elev);
+      color: var(--nyx-fg);
+      border: 1px solid var(--nyx-border);
+      border-radius: 0.35rem;
+      padding: 0.25rem 1.4rem 0.25rem 0.5rem;
+      font: inherit;
+      cursor: pointer;
+      background-image: linear-gradient(45deg, transparent 50%, var(--nyx-fg-dim) 50%),
+                        linear-gradient(135deg, var(--nyx-fg-dim) 50%, transparent 50%);
+      background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+      transition: border-color 120ms, color 120ms;
+    }
+    .theme-picker select:hover,
+    .theme-picker select:focus-visible {
+      border-color: var(--nyx-brand);
+      color: var(--nyx-brand-hi);
+      outline: none;
     }
     .guide table { width: 100%; border-collapse: collapse; }
     .guide td { padding: 0.35rem 0.5rem; vertical-align: top; }
@@ -221,13 +286,27 @@ const GAMES: readonly GameEntry[] = [
     :host { display: block; min-height: 100vh; background: var(--nyx-bg); }
   `,
 })
-export class HomeComponent {
+export class HomeComponent implements OnDestroy {
   protected readonly games = GAMES;
+  protected readonly themes: readonly Theme[] = listThemes();
+  protected readonly activeThemeId = signal<string>(getCurrentTheme().id);
   private readonly router = inject(Router);
+  // Subscribe so the picker stays in sync if some other tab / call swaps
+  // the theme out from under us.
+  private readonly unsubTheme = subscribeTheme((t) => this.activeThemeId.set(t.id));
 
   @HostListener('window:keydown', ['$event'])
   protected onKey(ev: KeyboardEvent): void {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     if (tryNavigate(this.router, ev.code)) ev.preventDefault();
+  }
+
+  protected onThemeChange(ev: Event): void {
+    const select = ev.target as HTMLSelectElement;
+    setActiveTheme(select.value);
+  }
+
+  ngOnDestroy(): void {
+    this.unsubTheme();
   }
 }

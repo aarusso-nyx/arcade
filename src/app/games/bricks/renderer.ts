@@ -1,35 +1,39 @@
-import { BRICK_COLORS, DEFAULT_CONFIG, type BricksConfig } from './config';
+import { getCurrentTheme, type BricksPalette } from '../../../core';
+import { DEFAULT_CONFIG, type BricksConfig } from './config';
 import type { BricksState } from './types';
 
-const COLORS = {
-  bg: '#0b0d10',
-  panel: '#14171c',
-  grid: 'rgba(74, 82, 94, 0.24)',
-  fg: '#e6ebf2',
-  dim: '#7a8597',
-  paddle: '#4eb0d9',
-  paddleEdge: '#e6ebf2',
-  ball: '#ffd24a',
-  shadow: 'rgba(0, 0, 0, 0.34)',
-} as const;
+/**
+ * All colours come from the active theme. Brick colours are looked up by
+ * row index (via the palette's `brickRows`), which lets a theme change take
+ * effect on the next paint even for bricks that were placed by an older
+ * theme — the `brick.color` field stored on state is treated as a fallback.
+ */
+function palette(): BricksPalette {
+  return getCurrentTheme().games.bricks;
+}
+
+function brickColor(row: number, fallback: string, p: BricksPalette): string {
+  return p.brickRows[row] ?? fallback;
+}
 
 export function renderBricks(
   ctx: CanvasRenderingContext2D,
   state: BricksState,
   cfg: BricksConfig = DEFAULT_CONFIG,
 ): void {
-  drawBackground(ctx, cfg);
-  drawHud(ctx, state, cfg);
-  drawBricks(ctx, state);
-  drawPaddle(ctx, state, cfg);
-  drawBall(ctx, state, cfg);
-  drawOverlay(ctx, state, cfg);
+  const p = palette();
+  drawBackground(ctx, cfg, p);
+  drawHud(ctx, state, cfg, p);
+  drawBricks(ctx, state, p);
+  drawPaddle(ctx, state, cfg, p);
+  drawBall(ctx, state, cfg, p);
+  drawOverlay(ctx, state, cfg, p);
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, cfg: BricksConfig): void {
-  ctx.fillStyle = COLORS.bg;
+function drawBackground(ctx: CanvasRenderingContext2D, cfg: BricksConfig, p: BricksPalette): void {
+  ctx.fillStyle = p.bg;
   ctx.fillRect(0, 0, cfg.width, cfg.height);
-  ctx.strokeStyle = COLORS.grid;
+  ctx.strokeStyle = p.grid;
   ctx.lineWidth = 1;
   for (let x = 0; x <= cfg.width; x += 24) {
     ctx.beginPath();
@@ -37,42 +41,47 @@ function drawBackground(ctx: CanvasRenderingContext2D, cfg: BricksConfig): void 
     ctx.lineTo(x, cfg.height);
     ctx.stroke();
   }
-  ctx.fillStyle = COLORS.panel;
+  ctx.fillStyle = p.panel;
   ctx.fillRect(0, 0, cfg.width, 52);
-  ctx.strokeStyle = '#2a2f38';
+  ctx.strokeStyle = p.panelBorder;
   ctx.strokeRect(0.5, 0.5, cfg.width - 1, cfg.height - 1);
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, state: BricksState, cfg: BricksConfig): void {
+function drawHud(
+  ctx: CanvasRenderingContext2D,
+  state: BricksState,
+  cfg: BricksConfig,
+  p: BricksPalette,
+): void {
   ctx.font = '12px "Press Start 2P", monospace';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = COLORS.dim;
+  ctx.fillStyle = p.dim;
   ctx.fillText('SCORE', 16, 16);
-  ctx.fillStyle = COLORS.fg;
+  ctx.fillStyle = p.fg;
   ctx.fillText(String(state.score).padStart(5, '0'), 16, 36);
 
-  ctx.fillStyle = COLORS.dim;
+  ctx.fillStyle = p.dim;
   ctx.fillText('HIGH', 168, 16);
-  ctx.fillStyle = COLORS.fg;
+  ctx.fillStyle = p.fg;
   ctx.fillText(String(state.highScore).padStart(5, '0'), 168, 36);
 
-  ctx.fillStyle = COLORS.dim;
+  ctx.fillStyle = p.dim;
   ctx.fillText('LIVES', 320, 16);
-  ctx.fillStyle = COLORS.ball;
+  ctx.fillStyle = p.ball;
   ctx.fillText(String(state.lives), 320, 36);
 
-  ctx.fillStyle = COLORS.dim;
+  ctx.fillStyle = p.dim;
   ctx.fillText('L', cfg.width - 64, 16);
-  ctx.fillStyle = COLORS.fg;
+  ctx.fillStyle = p.fg;
   ctx.fillText(String(state.level), cfg.width - 64, 36);
 }
 
-function drawBricks(ctx: CanvasRenderingContext2D, state: BricksState): void {
+function drawBricks(ctx: CanvasRenderingContext2D, state: BricksState, p: BricksPalette): void {
   for (const brick of state.bricks) {
     if (!brick.alive) continue;
-    ctx.fillStyle = COLORS.shadow;
+    ctx.fillStyle = p.shadow;
     ctx.fillRect(brick.x + 2, brick.y + 3, brick.width, brick.height);
-    ctx.fillStyle = brick.color;
+    ctx.fillStyle = brickColor(brick.row, brick.color, p);
     ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
     ctx.fillStyle = 'rgba(255,255,255,0.24)';
     ctx.fillRect(brick.x + 3, brick.y + 3, brick.width - 6, 3);
@@ -81,27 +90,37 @@ function drawBricks(ctx: CanvasRenderingContext2D, state: BricksState): void {
   }
 }
 
-function drawPaddle(ctx: CanvasRenderingContext2D, state: BricksState, cfg: BricksConfig): void {
+function drawPaddle(
+  ctx: CanvasRenderingContext2D,
+  state: BricksState,
+  cfg: BricksConfig,
+  p: BricksPalette,
+): void {
   const r = 5;
   const x = state.paddleX;
   const y = cfg.paddleY;
-  ctx.fillStyle = COLORS.shadow;
+  ctx.fillStyle = p.shadow;
   roundRect(ctx, x + 2, y + 3, cfg.paddleWidth, cfg.paddleHeight, r);
   ctx.fill();
-  ctx.fillStyle = COLORS.paddle;
+  ctx.fillStyle = p.paddle;
   roundRect(ctx, x, y, cfg.paddleWidth, cfg.paddleHeight, r);
   ctx.fill();
-  ctx.fillStyle = COLORS.paddleEdge;
+  ctx.fillStyle = p.paddleEdge;
   roundRect(ctx, x + 8, y + 3, cfg.paddleWidth - 16, 3, 2);
   ctx.fill();
 }
 
-function drawBall(ctx: CanvasRenderingContext2D, state: BricksState, cfg: BricksConfig): void {
-  ctx.fillStyle = COLORS.shadow;
+function drawBall(
+  ctx: CanvasRenderingContext2D,
+  state: BricksState,
+  cfg: BricksConfig,
+  p: BricksPalette,
+): void {
+  ctx.fillStyle = p.shadow;
   ctx.beginPath();
   ctx.arc(state.ball.x + 2, state.ball.y + 2, cfg.ballRadius, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = COLORS.ball;
+  ctx.fillStyle = p.ball;
   ctx.beginPath();
   ctx.arc(state.ball.x, state.ball.y, cfg.ballRadius, 0, Math.PI * 2);
   ctx.fill();
@@ -111,9 +130,14 @@ function drawBall(ctx: CanvasRenderingContext2D, state: BricksState, cfg: Bricks
   ctx.fill();
 }
 
-function drawOverlay(ctx: CanvasRenderingContext2D, state: BricksState, cfg: BricksConfig): void {
+function drawOverlay(
+  ctx: CanvasRenderingContext2D,
+  state: BricksState,
+  cfg: BricksConfig,
+  p: BricksPalette,
+): void {
   if (state.status === 'paused') {
-    drawPauseOverlay(ctx, cfg.width, cfg.height);
+    drawPauseOverlay(ctx, cfg.width, cfg.height, p);
     return;
   }
   let title = '';
@@ -133,15 +157,15 @@ function drawOverlay(ctx: CanvasRenderingContext2D, state: BricksState, cfg: Bri
   }
   if (!title) return;
 
-  ctx.fillStyle = 'rgba(11,13,16,0.72)';
+  ctx.fillStyle = p.overlayBg;
   ctx.fillRect(0, 220, cfg.width, 130);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '24px "Press Start 2P", monospace';
-  ctx.fillStyle = title === 'GAME OVER' ? BRICK_COLORS[0] : COLORS.fg;
+  ctx.fillStyle = title === 'GAME OVER' ? p.overlayDanger : p.fg;
   ctx.fillText(title, cfg.width / 2, 270);
   ctx.font = '12px "Press Start 2P", monospace';
-  ctx.fillStyle = COLORS.dim;
+  ctx.fillStyle = p.dim;
   ctx.fillText(subtitle, cfg.width / 2, 314);
   ctx.textAlign = 'left';
 }
@@ -150,13 +174,14 @@ function drawPauseOverlay(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
+  p: BricksPalette,
 ): void {
   const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const titleSize = 24;
   const fontFamily = '"Press Start 2P", monospace';
 
   ctx.save();
-  ctx.fillStyle = 'rgba(11, 13, 16, 0.7)';
+  ctx.fillStyle = p.overlayBg;
   ctx.fillRect(0, 0, w, h);
 
   ctx.textAlign = 'center';
@@ -170,18 +195,18 @@ function drawPauseOverlay(
 
   const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(nowMs / 380));
   ctx.globalAlpha = pulse;
-  ctx.fillStyle = '#4EB0D9';
+  ctx.fillStyle = p.pauseAccent;
   const chevronGap = titleSize * 0.9;
   const chevronSize = titleSize * 0.6;
   drawChevronArrow(ctx, w / 2 - titleW / 2 - chevronGap, titleY, chevronSize, 'right');
   drawChevronArrow(ctx, w / 2 + titleW / 2 + chevronGap, titleY, chevronSize, 'left');
   ctx.globalAlpha = 1;
 
-  ctx.fillStyle = '#4EB0D9';
+  ctx.fillStyle = p.pauseAccent;
   ctx.fillText('PAUSED', w / 2, titleY);
 
   ctx.font = `10px ${fontFamily}`;
-  ctx.fillStyle = COLORS.dim;
+  ctx.fillStyle = p.dim;
   ctx.fillText('Space / P to resume · Esc to quit', w / 2, cy + titleSize * 1.0);
 
   ctx.textAlign = 'left';

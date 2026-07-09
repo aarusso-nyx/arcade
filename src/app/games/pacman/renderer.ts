@@ -1,3 +1,4 @@
+import { getCurrentTheme, type PacmanPalette } from '../../../core';
 import {
   CANVAS_W,
   CANVAS_H,
@@ -25,31 +26,23 @@ import {
 const ACTOR_RADIUS = 5;
 const WALL_CONTOUR_OFFSET_PX = 0;
 
-const COLORS = {
-  bg: '#000000',
-  wall: '#1a1aff',
-  door: '#f6b4c7',
-  pellet: '#ffe7b3',
-  power: '#ffe7b3',
-  pacman: '#ffe600',
-  blinky: '#ff0000',
-  pinky: '#ffb8de',
-  inky: '#00ffe0',
-  clyde: '#ffb851',
-  frightened: '#1a1aff',
-  frightenedFlash: '#ffffff',
-  hud: '#ffffff',
-  hudDim: '#a0a0a0',
-  ready: '#ffff00',
-  gameOver: '#ff0000',
-} as const;
+/**
+ * All colours come from the active theme. The maze cache (baked wall tile
+ * outlines) is theme-dependent — see `buildMazeCache` — so callers must
+ * rebuild it when the theme changes.
+ */
+function palette(): PacmanPalette {
+  return getCurrentTheme().games.pacman;
+}
 
-const GHOST_BODY_COLOR: Record<GhostId, string> = {
-  blinky: COLORS.blinky,
-  pinky: COLORS.pinky,
-  inky: COLORS.inky,
-  clyde: COLORS.clyde,
-};
+function ghostBodyColor(id: GhostId, p: PacmanPalette): string {
+  switch (id) {
+    case 'blinky': return p.blinky;
+    case 'pinky': return p.pinky;
+    case 'inky': return p.inky;
+    case 'clyde': return p.clyde;
+  }
+}
 
 export interface MazeCache {
   /** Off-screen canvas with walls baked in. */
@@ -76,16 +69,17 @@ const NeighbourBit = {
 } as const;
 
 export function buildMazeCache(maze: Maze): MazeCache {
+  const p = palette();
   const c = document.createElement('canvas');
   c.width = GRID_W * TILE_SIZE;
   c.height = GRID_H * TILE_SIZE;
   const cx = c.getContext('2d');
   if (!cx) throw new Error('Canvas 2D context unavailable for maze cache');
-  cx.fillStyle = COLORS.bg;
+  cx.fillStyle = p.bg;
   cx.fillRect(0, 0, c.width, c.height);
 
   const wallShapes = buildWallShapes(maze);
-  drawWallShapes(cx, wallShapes, COLORS.wall);
+  drawWallShapes(cx, wallShapes, p.wall);
 
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -93,7 +87,7 @@ export function buildMazeCache(maze: Maze): MazeCache {
       if (t.type === 'door') {
         const px = x * TILE_SIZE;
         const py = y * TILE_SIZE;
-        cx.fillStyle = COLORS.door;
+        cx.fillStyle = p.door;
         cx.fillRect(px, py + 3, TILE_SIZE, 2);
       }
     }
@@ -108,50 +102,48 @@ export function render(
   nowMs: number,
   flashWhite: boolean,
 ): void {
-  // Background already cleared by mount.beginFrame; HUD and playfield are drawn
-  // in logical (1x) coords because the mount applied its scale transform.
-
+  const p = palette();
   // Top HUD.
-  drawTopHud(ctx, world.game);
+  drawTopHud(ctx, world.game, p);
 
   // Maze offset by top HUD height.
   ctx.save();
   ctx.translate(0, HUD_TOP_H);
 
   if (flashWhite) {
-    drawWallShapes(ctx, cache.wallShapes, '#ffffff');
+    drawWallShapes(ctx, cache.wallShapes, p.wallFlash);
   } else {
     ctx.drawImage(cache.surface, 0, 0);
-    drawPellets(ctx, world, nowMs);
+    drawPellets(ctx, world, nowMs, p);
     drawFruit(ctx, world);
-    drawPacman(ctx, world.pacman, world.game, nowMs);
-    for (const g of world.ghosts) drawGhost(ctx, g, world.game, nowMs);
+    drawPacman(ctx, world.pacman, world.game, nowMs, p);
+    for (const g of world.ghosts) drawGhost(ctx, g, world.game, nowMs, p);
   }
 
   // Overlays inside the playfield.
   if (world.game.phase === 'ready') {
-    drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'READY!', COLORS.ready);
+    drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'READY!', p.ready);
   } else if (world.game.phase === 'gameover') {
-    drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'GAME OVER', COLORS.gameOver);
+    drawCenterText(ctx, GRID_W * TILE_SIZE, GRID_H * TILE_SIZE, 'GAME OVER', p.gameOver);
   }
   ctx.restore();
 
   // Bottom HUD.
-  drawBottomHud(ctx, world.game);
+  drawBottomHud(ctx, world.game, p);
 
   // Pause overlay covers the entire canvas (drawn after HUDs so it dims them too).
   if (world.game.phase === 'paused') {
-    drawPauseOverlay(ctx, CANVAS_W, CANVAS_H, nowMs);
+    drawPauseOverlay(ctx, CANVAS_W, CANVAS_H, nowMs, p);
   }
 }
 
-function drawTopHud(ctx: CanvasRenderingContext2D, game: GameState): void {
-  ctx.fillStyle = COLORS.hud;
+function drawTopHud(ctx: CanvasRenderingContext2D, game: GameState, p: PacmanPalette): void {
+  ctx.fillStyle = p.hud;
   ctx.font = `6px ${PIXEL_FONT}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.fillText('1UP', 24, 1);
-  ctx.fillStyle = COLORS.hud;
+  ctx.fillStyle = p.hud;
   ctx.font = `8px ${PIXEL_FONT}`;
   ctx.fillText(pad(game.score, 6), 8, 10);
   ctx.font = `6px ${PIXEL_FONT}`;
@@ -163,20 +155,25 @@ function drawTopHud(ctx: CanvasRenderingContext2D, game: GameState): void {
   ctx.fillText(`L ${game.level}`, CANVAS_W - 4, 10);
 }
 
-function drawBottomHud(ctx: CanvasRenderingContext2D, game: GameState): void {
+function drawBottomHud(ctx: CanvasRenderingContext2D, game: GameState, p: PacmanPalette): void {
   const y = HUD_TOP_H + GRID_H * TILE_SIZE;
   // Lives icons.
   for (let i = 0; i < Math.max(0, game.lives - 1); i++) {
     const cx = 16 + i * 12;
     const cy = y + 6;
-    drawLifeChomp(ctx, cx, cy);
+    drawLifeChomp(ctx, cx, cy, p);
   }
   // Fruit indicator: show current level fruit only.
   const fx = CANVAS_W - 12;
   drawFruitSprite(ctx, fx, y + 6, getFruitForLevel(game.level), 7);
 }
 
-function drawPellets(ctx: CanvasRenderingContext2D, world: World, nowMs: number): void {
+function drawPellets(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  nowMs: number,
+  p: PacmanPalette,
+): void {
   const blink = Math.floor(nowMs / 250) % 2 === 0;
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -185,10 +182,10 @@ function drawPellets(ctx: CanvasRenderingContext2D, world: World, nowMs: number)
       const cx = x * TILE_SIZE + TILE_SIZE / 2;
       const cy = y * TILE_SIZE + TILE_SIZE / 2;
       if (v === 1) {
-        ctx.fillStyle = COLORS.pellet;
+        ctx.fillStyle = p.pellet;
         ctx.fillRect(cx - 1, cy - 1, 2, 2);
       } else if (v === 2 && blink) {
-        ctx.fillStyle = COLORS.power;
+        ctx.fillStyle = p.power;
         ctx.beginPath();
         ctx.arc(cx, cy, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -210,6 +207,7 @@ function drawPacman(
   pac: Pacman,
   game: GameState,
   _nowMs: number,
+  p: PacmanPalette,
 ): void {
   const x = pac.position.x;
   const y = pac.position.y;
@@ -220,7 +218,7 @@ function drawPacman(
     const open = (1 - t) * Math.PI;
     const deathScale = 1 - t;
     if (open <= 0.05) return;
-    ctx.fillStyle = COLORS.pacman;
+    ctx.fillStyle = p.pacman;
     ctx.beginPath();
     ctx.arc(x, y, ACTOR_RADIUS * deathScale, open, Math.PI * 2 - open);
     ctx.lineTo(x, y);
@@ -239,7 +237,7 @@ function drawPacman(
     case 'left': baseAngle = Math.PI; break;
     case 'up': baseAngle = (3 * Math.PI) / 2; break;
   }
-  ctx.fillStyle = COLORS.pacman;
+  ctx.fillStyle = p.pacman;
   ctx.beginPath();
   ctx.arc(x, y, ACTOR_RADIUS, baseAngle + open, baseAngle + Math.PI * 2 - open);
   ctx.lineTo(x, y);
@@ -248,8 +246,8 @@ function drawPacman(
   drawPacmanEye(ctx, x, y, pac.direction, { radius: ACTOR_RADIUS });
 }
 
-function drawLifeChomp(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-  ctx.fillStyle = COLORS.pacman;
+function drawLifeChomp(ctx: CanvasRenderingContext2D, x: number, y: number, p: PacmanPalette): void {
+  ctx.fillStyle = p.pacman;
   ctx.beginPath();
   ctx.arc(x, y, 3.5, 0.22 * Math.PI, 1.78 * Math.PI);
   ctx.lineTo(x, y);
@@ -263,13 +261,14 @@ function drawGhost(
   g: Ghost,
   game: GameState,
   _nowMs: number,
+  p: PacmanPalette,
 ): void {
   const x = g.position.x;
   const y = g.position.y;
 
   if (g.state === 'eaten' || g.state === 'entering') {
     drawGhostSprite(ctx, x, y, {
-      color: '#ffffff',
+      color: p.eaten,
       direction: g.direction,
       eaten: true,
       frame: g.animFrame,
@@ -277,19 +276,18 @@ function drawGhost(
     return;
   }
 
-  let bodyColor = GHOST_BODY_COLOR[g.id];
+  let bodyColor = ghostBodyColor(g.id, p);
   let flashingFrightened = false;
   if (g.state === 'frightened') {
-    // Flash white during the warning phase: last `flashes` half-second segments
-    // before fright timer expires.
+    // Flash white during the warning phase.
     const flashes = 5;
     const flashTicksTotal = flashes * 30; // 30 ticks = 0.5s
     if (game.frightenedTimer < flashTicksTotal) {
       const half = Math.floor(g.animFrame / 14) % 2;
-      bodyColor = half === 0 ? COLORS.frightened : COLORS.frightenedFlash;
+      bodyColor = half === 0 ? p.frightened : p.frightenedFlash;
       flashingFrightened = half !== 0;
     } else {
-      bodyColor = COLORS.frightened;
+      bodyColor = p.frightened;
     }
   }
 
@@ -321,6 +319,7 @@ function drawPauseOverlay(
   w: number,
   h: number,
   nowMs: number,
+  p: PacmanPalette,
 ): void {
   const titleSize = 16;
 
@@ -339,18 +338,18 @@ function drawPauseOverlay(
 
   const pulse = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(nowMs / 380));
   ctx.globalAlpha = pulse;
-  ctx.fillStyle = '#4EB0D9';
+  ctx.fillStyle = p.pauseAccent;
   const chevronGap = titleSize * 0.8;
   const chevronSize = titleSize * 0.55;
   drawChevronArrow(ctx, w / 2 - titleW / 2 - chevronGap, titleY, chevronSize, 'right');
   drawChevronArrow(ctx, w / 2 + titleW / 2 + chevronGap, titleY, chevronSize, 'left');
   ctx.globalAlpha = 1;
 
-  ctx.fillStyle = '#4EB0D9';
+  ctx.fillStyle = p.pauseAccent;
   ctx.fillText('PAUSED', w / 2, titleY);
 
   ctx.font = `6px ${PIXEL_FONT}`;
-  ctx.fillStyle = '#8a8f99';
+  ctx.fillStyle = p.hudDim;
   ctx.fillText('Space / P to resume · Esc to quit', w / 2, cy + titleSize * 1.1);
 
   ctx.restore();

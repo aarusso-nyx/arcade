@@ -3,9 +3,11 @@ import {
   createKeyboard,
   createLoop,
   createStorage,
+  getCurrentTheme,
   mountCanvas,
   mulberry32,
   registerSounds,
+  subscribeTheme,
   type Audio,
   type CanvasMount,
   type Keyboard,
@@ -31,7 +33,7 @@ import {
   tetrisConfigFromReplay,
   type TetrisReplayCursor,
 } from './replay';
-import { renderPlayfield, renderSidePanel } from './renderer';
+import { drawReplayBadge, renderPlayfield, renderSidePanel } from './renderer';
 import {
   applyGravity,
   awardDropPoints,
@@ -154,13 +156,13 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     logicalWidth: playWidthPx,
     logicalHeight: playHeightPx,
     scaling: 'fit',
-    background: '#0b0d10',
+    background: getCurrentTheme().games.tetris.bg,
   });
   const sideMount: CanvasMount = mountCanvas(sideHost, {
     logicalWidth: sideWidthPx,
     logicalHeight: sideHeightPx,
     scaling: 'fit',
-    background: '#14171c',
+    background: getCurrentTheme().games.tetris.panelBg,
   });
 
   // DAS state.
@@ -596,30 +598,18 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     currentTick++;
   };
 
-  const drawReplayBadge = (ctx: CanvasRenderingContext2D): void => {
-    ctx.save();
-    const w = 78;
-    const h = 20;
-    ctx.fillStyle = 'rgba(240,60,60,0.85)';
-    ctx.fillRect(8, 8, w, h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(8, 8, w, h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-    ctx.fillText('● REPLAY', 8 + w / 2, 8 + h / 2 + 1);
-    ctx.restore();
-  };
-
   const render = (): void => {
-    playMount.beginFrame('#0b0d10');
+    const themeTetris = getCurrentTheme().games.tetris;
+    playMount.beginFrame(themeTetris.bg);
     renderPlayfield(playMount.ctx, state, cfg);
     if (replayMode) drawReplayBadge(playMount.ctx);
-    sideMount.beginFrame('#14171c');
+    sideMount.beginFrame(themeTetris.panelBg);
     renderSidePanel(sideMount.ctx, state, cfg);
   };
+
+  // Live theme swaps re-render immediately so the next paint doesn't wait
+  // for a game tick.
+  const unsubTheme = subscribeTheme(() => render());
 
   const loop: Loop = createLoop({
     tickIntervalMs: TICK_MS,
@@ -648,6 +638,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       sideMount.destroy();
       wrap.remove();
       audio.destroy();
+      unsubTheme();
       subscribers.clear();
     },
     get state(): GameState {

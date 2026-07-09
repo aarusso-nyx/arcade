@@ -197,9 +197,9 @@ const TOAST_DURATION_MS = 2000;
         </p>
         <h4>Cores</h4>
         <p>
-          <strong style="color:#6aaa64">Verde</strong> — letra certa na posição certa.<br>
-          <strong style="color:#c9b458">Amarelo</strong> — letra existe na palavra, em outra posição.<br>
-          <strong style="color:#888">Cinza</strong> — letra não existe na palavra.
+          <strong style="color:var(--termo-correct)">Verde</strong> — letra certa na posição certa.<br>
+          <strong style="color:var(--termo-present)">Amarelo</strong> — letra existe na palavra, em outra posição.<br>
+          <strong style="color:var(--nyx-fg-dim)">Cinza</strong> — letra não existe na palavra.
         </p>
         <p>
           O avaliador usa o algoritmo de duas passadas (marcação de verdes primeiro,
@@ -357,15 +357,18 @@ const TOAST_DURATION_MS = 2000;
     :host {
       display: block;
       min-height: 100vh;
-      background: #14171c;
-      color: #e6e6e6;
-      --green: #6aaa64;
-      --yellow: #c9b458;
-      --gray: #3a3a3c;
-      --tile-empty: #14171c;
-      --tile-border: #3a3a3c;
-      --tile-border-filled: #565758;
-      --key-default: #818384;
+      background: var(--nyx-bg);
+      color: var(--nyx-fg);
+      /* These CSS variables are supplied by the active theme (see
+         src/core/theme/themes/*.ts). The --green/--yellow/--gray names are
+         kept as historical aliases pointing at the theme tokens. */
+      --green: var(--termo-correct);
+      --yellow: var(--termo-present);
+      --gray: var(--termo-absent);
+      --tile-empty: var(--termo-tile-empty);
+      --tile-border: var(--termo-tile-border);
+      --tile-border-filled: var(--termo-tile-border-filled);
+      --key-default: var(--termo-key-default);
     }
     .page {
       max-width: 520px;
