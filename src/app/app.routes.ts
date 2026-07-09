@@ -4,6 +4,7 @@ const pacman = () => import('./games/pacman/pacman.component').then((m) => m.Pac
 const tetris = () => import('./games/tetris/tetris.component').then((m) => m.TetrisComponent);
 const snake = () => import('./games/snake/snake.component').then((m) => m.SnakeComponent);
 const termo = () => import('./games/termo/termo.component').then((m) => m.TermoComponent);
+const bricks = () => import('./games/bricks/bricks.component').then((m) => m.BricksComponent);
 
 export const routes: Routes = [
   {
@@ -21,5 +22,7 @@ export const routes: Routes = [
   // /termo/archive opens the archive picker on load. The archived puzzle
   // itself is loaded via the `?day=N` query param on the /termo route.
   { path: 'termo/archive', loadComponent: termo, data: { help: false, archive: true } },
+  { path: 'bricks', loadComponent: bricks, data: { help: false } },
+  { path: 'bricks/help', loadComponent: bricks, data: { help: true } },
   { path: '**', redirectTo: '' },
 ];

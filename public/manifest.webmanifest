@@ -1,7 +1,7 @@
 {
   "name": "NYX Arcade",
   "short_name": "NYX Arcade",
-  "description": "Four classic games as an example of AI-agentic coding.",
+  "description": "Five classic games as an example of AI-agentic coding.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

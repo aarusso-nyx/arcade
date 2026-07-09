@@ -36,7 +36,7 @@ import { createSnakeGame, type SnakeGame } from './game';
       <p class="hint">
         Arrows / WASD turn &middot; Space pause &middot; Enter start &middot;
         T wrap mode &middot; [ ] queue depth &middot; M mute &middot; H help &middot; C credits &middot;
-        \\ fullscreen &middot; 0–4 navigate
+        \\ fullscreen &middot; 0–5 navigate
       </p>
       <app-help-dialog [(open)]="helpOpen" title="Snake">
         <h4>Goal</h4>
@@ -55,7 +55,7 @@ import { createSnakeGame, type SnakeGame } from './game';
         </table>
         <h4>Arcade-wide</h4>
         <table>
-          <tr><td><kbd>0</kbd> – <kbd>4</kbd></td><td>Home, Pac-Man, Tetris, Snake, Termo</td></tr>
+          <tr><td><kbd>0</kbd> – <kbd>5</kbd></td><td>Home, Pac-Man, Tetris, Snake, Termo, Bricks</td></tr>
           <tr><td><kbd>\\</kbd></td><td>Toggle arcade mode (fullscreen board)</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to home</td></tr>
           <tr><td><kbd>M</kbd></td><td>Mute / unmute sound effects</td></tr>

@@ -1080,7 +1080,7 @@ export class TermoComponent implements AfterViewInit, OnDestroy {
       this.router.navigate(['/']);
       return;
     }
-    // Global navigation digits 0-4. Termo only consumes digit keys via this
+    // Global navigation digits 0-5. Termo only consumes digit keys via this
     // path; the reducer rejects non-letters, so it's safe to intercept.
     if (tryNavigate(this.router, e.code)) {
       e.preventDefault();

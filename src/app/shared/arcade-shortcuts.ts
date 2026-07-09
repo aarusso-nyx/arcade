@@ -8,6 +8,7 @@ import { Router } from '@angular/router';
  * - `Digit2`  → /tetris
  * - `Digit3`  → /snake
  * - `Digit4`  → /termo
+ * - `Digit5`  → /bricks
  * - `Backslash` → toggle arcade-mode (fullscreen board)
  * - `KeyH` / `?` → help dialog (handled in components)
  * - `KeyC`  → credits dialog (handled in components)
@@ -34,6 +35,7 @@ export const ARCADE_ROUTES: readonly ArcadeRoute[] = [
   { code: 'Digit2', path: '/tetris', label: 'Tetris',  digit: '2' },
   { code: 'Digit3', path: '/snake',  label: 'Snake',   digit: '3' },
   { code: 'Digit4', path: '/termo',  label: 'Termo',   digit: '4' },
+  { code: 'Digit5', path: '/bricks', label: 'Bricks',  digit: '5' },
 ] as const;
 
 export function tryNavigate(

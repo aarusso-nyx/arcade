@@ -5,9 +5,10 @@ import { PacmanPreviewComponent } from './previews/pacman-preview';
 import { TetrisPreviewComponent } from './previews/tetris-preview';
 import { SnakePreviewComponent } from './previews/snake-preview';
 import { TermoPreviewComponent } from './previews/termo-preview';
+import { BricksPreviewComponent } from './previews/bricks-preview';
 
 interface GameEntry {
-  readonly slug: 'pacman' | 'tetris' | 'snake' | 'termo';
+  readonly slug: 'pacman' | 'tetris' | 'snake' | 'termo' | 'bricks';
   readonly name: string;
   readonly tagline: string;
 }
@@ -17,6 +18,7 @@ const GAMES: readonly GameEntry[] = [
   { slug: 'tetris', name: 'Tetris', tagline: 'Stack tetrominoes; clear lines as they fall.' },
   { slug: 'snake', name: 'Snake', tagline: 'Grow longer with each apple; do not bite your tail.' },
   { slug: 'termo', name: 'Termo', tagline: 'Guess the five-letter word in six tries.' },
+  { slug: 'bricks', name: 'Bricks', tagline: 'Break the wall; keep the ball alive.' },
 ];
 
 @Component({
@@ -27,6 +29,7 @@ const GAMES: readonly GameEntry[] = [
     TetrisPreviewComponent,
     SnakePreviewComponent,
     TermoPreviewComponent,
+    BricksPreviewComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -36,7 +39,7 @@ const GAMES: readonly GameEntry[] = [
         <div>
           <h1 class="pixel">NYX Arcade</h1>
           <p class="tagline">
-            Four classic games as a worked example of AI-agentic coding.
+            Five classic games as a worked example of AI-agentic coding.
           </p>
         </div>
       </header>
@@ -50,6 +53,7 @@ const GAMES: readonly GameEntry[] = [
                   @case ('tetris') { <app-tetris-preview /> }
                   @case ('snake')  { <app-snake-preview /> }
                   @case ('termo')  { <app-termo-preview /> }
+                  @case ('bricks') { <app-bricks-preview /> }
                 }
               </span>
               <span class="body">
@@ -71,7 +75,7 @@ const GAMES: readonly GameEntry[] = [
       <section class="guide">
         <h2>Quick reference</h2>
         <table>
-          <tr><td><kbd>0</kbd> – <kbd>4</kbd></td><td>Jump between home, Pac-Man, Tetris, Snake, Termo from any screen</td></tr>
+          <tr><td><kbd>0</kbd> – <kbd>5</kbd></td><td>Jump between home, Pac-Man, Tetris, Snake, Termo, Bricks from any screen</td></tr>
           <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>In-game instructions dialog</td></tr>
           <tr><td><kbd>C</kbd></td><td>Credits dialog (in Tetris/Termo use Shift+C since C is used in-game)</td></tr>
           <tr><td><kbd>\\</kbd></td><td>Toggle arcade mode (fullscreen board, hides chrome)</td></tr>
@@ -144,7 +148,8 @@ const GAMES: readonly GameEntry[] = [
     .preview app-pacman-preview,
     .preview app-tetris-preview,
     .preview app-snake-preview,
-    .preview app-termo-preview {
+    .preview app-termo-preview,
+    .preview app-bricks-preview {
       display: block;
       width: 100%;
       height: 100%;

@@ -12,10 +12,10 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { tryNavigate } from '../../shared/arcade-shortcuts';
-import { createPacmanGame, type PacmanGame } from './game';
+import { createBricksGame, type BricksGame, type BricksSnapshot } from './game';
 
 @Component({
-  selector: 'app-pacman',
+  selector: 'app-bricks',
   imports: [RouterLink, HelpDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[class.arcade]': 'arcadeMode()' },
@@ -23,81 +23,61 @@ import { createPacmanGame, type PacmanGame } from './game';
     <section class="page">
       <header>
         <a routerLink="/">&larr; Arcade</a>
-        <h2 class="pixel">Pac-Man</h2>
+        <h2 class="pixel">Bricks</h2>
         <div class="scores">
-          <span class="label">Score</span><span class="value">{{ score() }}</span>
-          <span class="label">High</span><span class="value">{{ highScore() }}</span>
-          <span class="label">Lives</span><span class="value">{{ lives() }}</span>
-          <span class="label">Level</span><span class="value">{{ level() }}</span>
+          <div class="stat"><span class="label">Score</span><span class="value">{{ score() }}</span></div>
+          <div class="stat"><span class="label">High</span><span class="value">{{ highScore() }}</span></div>
+          <div class="stat"><span class="label">Lives</span><span class="value">{{ lives() }}</span></div>
+          <div class="stat"><span class="label">Level</span><span class="value">{{ level() }}</span></div>
           <button type="button" class="icon-btn" (click)="creditsOpen.set(true)" aria-label="Credits" title="Credits (C)">©</button>
           <button type="button" class="icon-btn" (click)="helpOpen.set(true)" aria-label="Help" title="Help (H or ?)">?</button>
         </div>
       </header>
       <div #host class="host"></div>
       <p class="hint">
-        Arrows / WASD turn &middot; P / Space pause &middot; Enter restart &middot;
-        Esc pause/quit &middot; M mute &middot; H help &middot; C credits &middot;
-        \\ fullscreen &middot; 0–5 navigate
+        Arrows or A/D move &middot; Space launch/pause &middot; P pause &middot; Enter retry
+        &middot; Esc pause/quit &middot; M mute &middot; H help &middot; C credits &middot; \\ fullscreen
+        &middot; 0-5 navigate
       </p>
-      <app-help-dialog [(open)]="helpOpen" title="Pac-Man">
+      <app-help-dialog [(open)]="helpOpen" title="Bricks">
         <h4>Goal</h4>
         <p>
-          Clear the maze of all <strong>240 pellets</strong> and <strong>4 power pellets</strong>
-          while avoiding the four ghosts. Clearing the board advances you to the next level on a
-          slightly faster version of the same maze. You start with <strong>3 lives</strong> and
-          earn a bonus life at <strong>10,000 points</strong>.
+          Clear every brick with the bouncing ball. Keep the ball above the bottom edge by
+          steering the paddle, then survive faster racks for the highest score.
         </p>
-        <h4>Pac-Man controls</h4>
+        <h4>Controls</h4>
         <table>
-          <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> / <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Change direction</td></tr>
-          <tr><td><kbd>P</kbd> / <kbd>Space</kbd></td><td>Pause / resume</td></tr>
-          <tr><td><kbd>Enter</kbd></td><td>Start, or restart from game over</td></tr>
+          <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>Move paddle</td></tr>
+          <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Move paddle</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Launch ball; pause / resume while moving</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>Start / retry after game over</td></tr>
+          <tr><td><kbd>P</kbd></td><td>Pause / resume</td></tr>
         </table>
+        <h4>Scoring</h4>
+        <p>
+          Higher rows are worth more points. Consecutive brick hits build a small combo bonus
+          until the ball touches the paddle or a life is lost.
+        </p>
         <h4>Arcade-wide</h4>
         <table>
-          <tr><td><kbd>0</kbd> – <kbd>5</kbd></td><td>Home, Pac-Man, Tetris, Snake, Termo, Bricks</td></tr>
-          <tr><td><kbd>\\</kbd></td><td>Toggle arcade mode (fullscreen board)</td></tr>
+          <tr><td><kbd>0</kbd>-<kbd>5</kbd></td><td>Home, Pac-Man, Tetris, Snake, Termo, Bricks</td></tr>
+          <tr><td><kbd>\\</kbd></td><td>Toggle arcade mode</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Pause; press again to quit to home</td></tr>
           <tr><td><kbd>M</kbd></td><td>Mute / unmute sound effects</td></tr>
           <tr><td><kbd>H</kbd> / <kbd>?</kbd></td><td>This dialog</td></tr>
           <tr><td><kbd>C</kbd></td><td>Credits</td></tr>
         </table>
-        <h4>Scoring</h4>
-        <table>
-          <tr><td>Pellet</td><td>10</td></tr>
-          <tr><td>Power pellet</td><td>50</td></tr>
-          <tr><td>Ghost (chain)</td><td>200 → 400 → 800 → 1600</td></tr>
-          <tr><td>Fruit (level 1)</td><td>100 (cherry), up to 5000 at later levels</td></tr>
-        </table>
-        <h4>The ghosts</h4>
-        <p>
-          <strong>Blinky</strong> (red) chases you directly.
-          <strong>Pinky</strong> (pink) aims 4 tiles ahead of where you're facing.
-          <strong>Inky</strong> (cyan) flanks using Blinky's position.
-          <strong>Clyde</strong> (orange) chases when far, retreats when close (within 8 tiles).
-          Power pellets make them <strong>frightened</strong> — blue and edible.
-        </p>
       </app-help-dialog>
-      <app-help-dialog [(open)]="creditsOpen" title="Credits — Pac-Man">
+      <app-help-dialog [(open)]="creditsOpen" title="Credits — Bricks">
         <p>
-          <a href="https://en.wikipedia.org/wiki/Pac-Man" target="_blank" rel="noopener">Pac-Man</a>
-          was created by
-          <a href="https://en.wikipedia.org/wiki/Toru_Iwatani" target="_blank" rel="noopener">Tōru Iwatani</a>
-          at <a href="https://en.wikipedia.org/wiki/Namco" target="_blank" rel="noopener">Namco</a> in 1980.
-        </p>
-        <p>
-          This implementation follows the canonical arcade behaviour as documented in
-          Jamey Pittman's <a href="https://pacman.holenet.info/" target="_blank" rel="noopener">Pac-Man Dossier</a>:
-          31×28 maze, per-level speed table with Elroy thresholds, scatter / chase phase
-          schedule, two-tier ghost-house release (personal + global counter + idle timer),
-          and the four ghost AIs at their full fidelity — including Pinky's famous
-          up-direction overflow bug and Inky's flank-via-Blinky formula.
+          Bricks is a brick-breaking game inspired by arcade classics such as
+          <a href="https://en.wikipedia.org/wiki/Breakout_(video_game)" target="_blank" rel="noopener">Breakout</a>.
         </p>
         <p>
           Built by
           <a href="mailto:aarusso@nyxk.com.br" target="_blank" rel="noopener">Antonio Augusto Russo</a>
           at NYX Knowledge as a worked example of AI-agentic coding.
-          See <code>docs/pacman/engineering.md</code> or the
+          See <code>docs/bricks/engineering.md</code> or the
           <a href="https://github.com/aarusso-nyx/arcade" target="_blank" rel="noopener">GitHub repository</a>.
         </p>
       </app-help-dialog>
@@ -105,7 +85,7 @@ import { createPacmanGame, type PacmanGame } from './game';
   `,
   styles: `
     .page {
-      max-width: 820px;
+      max-width: 760px;
       margin: 0 auto;
       padding: 1.5rem;
       font-family: system-ui, sans-serif;
@@ -128,14 +108,28 @@ import { createPacmanGame, type PacmanGame } from './game';
     a:hover { opacity: 1; color: var(--nyx-brand-hi); }
     .scores {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.4rem 0.6rem;
-      justify-content: flex-end;
+      gap: 1rem;
       font-variant-numeric: tabular-nums;
+      align-items: center;
     }
-    .scores .label { color: var(--nyx-fg-dim); font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--nyx-pixel-font); }
-    .scores .value { font-size: 1.1rem; font-weight: 600; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--nyx-accent); line-height: 1; }
+    .stat { display: flex; flex-direction: column; align-items: flex-end; }
+    .scores .label {
+      color: var(--nyx-fg-dim);
+      font-size: 0.55rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-family: var(--nyx-pixel-font);
+    }
+    .scores .value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      min-width: 3ch;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--nyx-accent);
+      line-height: 1;
+      margin-top: 0.25rem;
+    }
     .icon-btn {
       background: transparent;
       color: inherit;
@@ -147,26 +141,25 @@ import { createPacmanGame, type PacmanGame } from './game';
       font-weight: 600;
       cursor: pointer;
       opacity: 0.65;
+      margin-left: 0.25rem;
       transition: border-color 120ms, color 120ms, opacity 120ms;
     }
     .icon-btn:hover { opacity: 1; border-color: var(--nyx-brand); color: var(--nyx-brand-hi); }
     .host {
       width: 100%;
-      aspect-ratio: 224 / 288;
-      /* Grow to fill viewport while respecting aspect ratio. */
-      max-width: min(80vmin * 224 / 288, calc(100vh - 200px) * 224 / 288, 1200px);
-      max-height: calc(100vh - 200px);
-      background: #000;
-      border: 2px solid var(--nyx-brand);
-      border-radius: 0.5rem;
-      overflow: hidden;
+      min-height: calc(100vh - 220px);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto;
-      box-shadow: 0 0 0 1px var(--nyx-brand-deep);
     }
-    .hint { color: var(--nyx-fg-dim); font-size: 0.78rem; margin: 0; text-align: center; line-height: 1.5; }
+    .host > div { border: 2px solid var(--nyx-brand); border-radius: 0.4rem; overflow: hidden; }
+    .hint {
+      color: var(--nyx-fg-dim);
+      font-size: 0.78rem;
+      margin: 0;
+      text-align: center;
+      line-height: 1.5;
+    }
     :host { display: block; min-height: 100vh; background: var(--nyx-bg); }
 
     :host.arcade {
@@ -184,15 +177,12 @@ import { createPacmanGame, type PacmanGame } from './game';
     }
     :host.arcade header,
     :host.arcade .hint { display: none; }
-    :host.arcade .host {
-      max-width: min(100vw, 100vh * 224 / 288);
-      max-height: 100vh;
-    }
+    :host.arcade .host { min-height: 100vh; }
   `,
 })
-export class PacmanComponent implements AfterViewInit, OnDestroy {
+export class BricksComponent implements AfterViewInit, OnDestroy {
   private readonly hostRef = viewChild.required<ElementRef<HTMLDivElement>>('host');
-  private game: PacmanGame | null = null;
+  private game: BricksGame | null = null;
   private unsubscribe: (() => void) | null = null;
 
   protected readonly score = signal(0);
@@ -240,26 +230,23 @@ export class PacmanComponent implements AfterViewInit, OnDestroy {
         this.arcadeMode.set(false);
         return;
       }
-      const phase = this.game?.state.phase;
-      if (phase === 'playing' || phase === 'ready') {
-        this.game!.pause();
+      if (this.game?.state.status === 'playing' || this.game?.state.status === 'ready') {
+        this.game.pause();
       } else {
         this.router.navigate(['/']);
       }
       return;
     }
-    if (tryNavigate(this.router, ev.code)) {
-      ev.preventDefault();
-    }
+    if (tryNavigate(this.router, ev.code)) ev.preventDefault();
   }
 
   ngAfterViewInit(): void {
-    this.game = createPacmanGame(this.hostRef().nativeElement);
-    this.unsubscribe = this.game.onScoreChange((s) => {
-      this.score.set(s.score);
-      this.highScore.set(s.highScore);
-      this.lives.set(s.lives);
-      this.level.set(s.level);
+    this.game = createBricksGame(this.hostRef().nativeElement);
+    this.unsubscribe = this.game.onChange((snap: BricksSnapshot) => {
+      this.score.set(snap.score);
+      this.highScore.set(snap.highScore);
+      this.lives.set(snap.lives);
+      this.level.set(snap.level);
     });
     this.game.start();
   }

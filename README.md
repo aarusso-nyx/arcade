@@ -1,6 +1,6 @@
 # NYX Arcade
 
-Four classic games — Pac-Man, Tetris, Snake, and Termo (a pt-BR Wordle) —
+Five classic games — Pac-Man, Tetris, Snake, Termo (a pt-BR Wordle), and Bricks —
 built as a routed Angular 20 single-page app.
 
 Play live: **<https://aarusso-nyx.github.io/arcade/>**
