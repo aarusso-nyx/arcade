@@ -10,6 +10,8 @@ import {
   type CanvasMount,
   type Keyboard,
   type Loop,
+  type Replay,
+  type TetrisAction,
 } from '../../../core';
 import { TETRIS_SFX } from './audio';
 import { COLS, DEFAULT_CONFIG, type TetrisConfig } from './config';
@@ -23,6 +25,12 @@ import {
 } from './input';
 import { createLockState, shouldLock, tickLock, tryResetLock } from './lock';
 import { SevenBag } from './randomizer';
+import {
+  createTetrisRecorder,
+  createTetrisReplayCursor,
+  tetrisConfigFromReplay,
+  type TetrisReplayCursor,
+} from './replay';
 import { renderPlayfield, renderSidePanel } from './renderer';
 import {
   applyGravity,
@@ -52,6 +60,12 @@ export interface TetrisGame {
   readonly ghostEnabled: boolean;
   toggleMute(): boolean;
   readonly muted: boolean;
+  /** Snapshot the current run as a shareable Replay, once it has ended. */
+  exportReplay(): Replay | null;
+  /** Play back a recorded run in spectator mode. */
+  replayFrom(replay: Replay): void;
+  readonly isReplaying: boolean;
+  readonly replayVerified: boolean | null;
 }
 
 export interface TetrisSnapshot {
@@ -74,8 +88,13 @@ const GHOST_ENABLED_KEY = 'ghostEnabled';
 
 export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): TetrisGame {
   const cfg: TetrisConfig = { ...DEFAULT_CONFIG, ...opts };
-  const seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
-  let rng = mulberry32(seed);
+  const seedFixed = opts.seed != null;
+  // effectiveSeed is the seed actually threaded into mulberry32 for the CURRENT
+  // run — captured verbatim by exportReplay so playback is byte-exact.
+  let effectiveSeed = seedFixed
+    ? (opts.seed as number)
+    : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+  let rng = mulberry32(effectiveSeed);
   const storage = createStorage(STORAGE_NS);
   const audio: Audio = createAudio();
   registerSounds(audio, TETRIS_SFX);
@@ -161,8 +180,30 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
 
   const lockState = { state: createLockState() };
 
+  // Replay recording + playback.
+  const recorder = createTetrisRecorder();
+  let currentTick = 0;
+  let replayMode = false;
+  let activeReplay: Replay | null = null;
+  let replayCursor: TetrisReplayCursor | null = null;
+  let replayVerified: boolean | null = null;
+  let finalReplay: Replay | null = null;
+  let prevSoftDropping = false;
+
   const beginGame = (): void => {
-    rng = mulberry32(seed ^ (state.score | 0) ^ Date.now());
+    // Fresh seed each begin unless the caller explicitly pinned one (tests).
+    // We stir Date.now for user runs so consecutive plays don't repeat the
+    // exact bag. Replay path bypasses this: replayFrom() sets effectiveSeed
+    // to the recorded value and skips beginGame's derivation.
+    if (!replayMode) {
+      if (!seedFixed) {
+        effectiveSeed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+      }
+      rng = mulberry32(effectiveSeed);
+      recorder.reset();
+      finalReplay = null;
+      replayVerified = null;
+    }
     bag = new SevenBag(rng);
     state = createInitialState();
     state.status = 'playing';
@@ -172,8 +213,15 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     dasOnKeyUp(dasRight);
     lastHorizontalKey = null;
     wasDown.clear();
+    currentTick = 0;
+    prevSoftDropping = false;
     spawnFromBag(state, bag, cfg);
     notify();
+  };
+
+  const record = (action: TetrisAction): void => {
+    if (replayMode) return;
+    recorder.push(currentTick, action);
   };
 
   let resumeTo: GameState['status'] = 'playing';
@@ -191,6 +239,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     if (!state.active) return;
     const moved = tryTranslate(state, dx, 0);
     if (moved) {
+      record(dx < 0 ? 'left' : 'right');
       if (isGrounded(state)) {
         lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
       }
@@ -201,6 +250,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     if (!state.active) return;
     const ok = tryRotatePiece(state, dir);
     if (ok) {
+      record(dir === 'CW' ? 'rotCW' : dir === 'CCW' ? 'rotCCW' : 'rot180');
       if (isGrounded(state)) {
         lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
       }
@@ -210,6 +260,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
   const doHardDrop = (): void => {
     if (!state.active) return;
     const cells = hardDrop(state);
+    record('hard');
     if (cells > 0) {
       awardDropPoints(state, 0, cells);
       notify();
@@ -274,6 +325,19 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       highScore = state.score;
       storage.set(cfg.storageKey, highScore);
     }
+    finalizeReplayIfEnded();
+  };
+
+  const finalizeReplayIfEnded = (): void => {
+    if (finalReplay || replayMode) return;
+    if (state.status === 'gameover') {
+      finalReplay = recorder.finalize({
+        seed: effectiveSeed,
+        cfg,
+        endedAtTick: currentTick,
+        finalScore: state.score,
+      });
+    }
   };
 
   const toggleGhost = (): boolean => {
@@ -326,9 +390,16 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     if (onPressed('KeyC') || onPressed('ShiftLeft') || onPressed('ShiftRight')) {
       const swapped = tryHold(state, bag, cfg);
       if (swapped) {
+        record('hold');
         lockState.state = createLockState();
         audio.play('hold');
       }
+    }
+
+    // Detect soft-drop state transitions and record them as toggles.
+    if (state.softDropping !== prevSoftDropping) {
+      record('soft');
+      prevSoftDropping = state.softDropping;
     }
   };
 
@@ -358,17 +429,98 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
 
   const TICK_MS = cfg.tickIntervalMs;
 
+  /**
+   * Apply a single recorded action during replay playback. Mirrors the discrete
+   * effects the live path produces (post-DAS), so replay doesn't have to
+   * re-simulate keydown/keyup timing.
+   */
+  const applyReplayAction = (action: TetrisAction): void => {
+    if (!state.active) return;
+    switch (action) {
+      case 'left':
+        if (tryTranslate(state, -1, 0)) {
+          if (isGrounded(state)) {
+            lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
+          }
+        }
+        break;
+      case 'right':
+        if (tryTranslate(state, 1, 0)) {
+          if (isGrounded(state)) {
+            lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
+          }
+        }
+        break;
+      case 'rotCW':
+      case 'rotCCW':
+      case 'rot180': {
+        const dir = action === 'rotCW' ? 'CW' : action === 'rotCCW' ? 'CCW' : '180';
+        if (tryRotatePiece(state, dir)) {
+          if (isGrounded(state)) {
+            lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
+          }
+        }
+        break;
+      }
+      case 'soft':
+        state.softDropping = !state.softDropping;
+        break;
+      case 'hard': {
+        const cells = hardDrop(state);
+        if (cells > 0) awardDropPoints(state, 0, cells);
+        forceLock();
+        break;
+      }
+      case 'hold': {
+        const swapped = tryHold(state, bag, cfg);
+        if (swapped) lockState.state = createLockState();
+        break;
+      }
+    }
+  };
+
+  const verifyReplay = (): void => {
+    if (!activeReplay) return;
+    const ok = state.score === activeReplay.finalScore;
+    replayVerified = ok;
+    if (!ok) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[tetris replay] determinism check failed: expected score ` +
+          `${activeReplay.finalScore}, got ${state.score}`,
+      );
+    }
+  };
+
   const tick = (): void => {
-    handleEdges();
+    if (replayMode && replayCursor && activeReplay) {
+      // Spectator mode: skip handleEdges entirely and consume recorded
+      // actions at this tick. Chrome keys (Esc/M/help) are handled above
+      // this layer in the Angular component, so keyboard input is ignored
+      // safely here.
+      for (const a of replayCursor.actionsAt(currentTick)) {
+        applyReplayAction(a);
+      }
+    } else {
+      handleEdges();
+    }
 
     if (state.status === 'lineclear') {
       const done = tickLineClear(state, TICK_MS);
       if (done) {
         afterLockSpawn();
       }
+      currentTick++;
       return;
     }
-    if (state.status !== 'playing') return;
+    if (state.status !== 'playing') {
+      if (replayMode && activeReplay && replayVerified === null &&
+          (state.status === 'gameover')) {
+        verifyReplay();
+      }
+      currentTick++;
+      return;
+    }
 
     // DAS / ARR auto-repeat (left/right). Process in real-ms (== TICK_MS at 60Hz).
     // Last direction wins: if both are pressed, process the most recently pressed.
@@ -379,6 +531,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       const n = repeats(-1, dasLeft);
       for (let i = 0; i < n; i++) {
         if (!tryTranslate(state, -1, 0)) break;
+        record('left');
         if (isGrounded(state)) {
           lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
         }
@@ -387,6 +540,7 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       const n = repeats(1, dasRight);
       for (let i = 0; i < n; i++) {
         if (!tryTranslate(state, 1, 0)) break;
+        record('right');
         if (isGrounded(state)) {
           lockState.state = tryResetLock(lockState.state, cfg.lockDelayMs, cfg.moveResetCap);
         }
@@ -396,11 +550,13 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
       const n = repeats(-1, dasLeft);
       for (let i = 0; i < n; i++) {
         if (!tryTranslate(state, -1, 0)) break;
+        record('left');
       }
     } else if (dasRight.pressed) {
       const n = repeats(1, dasRight);
       for (let i = 0; i < n; i++) {
         if (!tryTranslate(state, 1, 0)) break;
+        record('right');
       }
     }
 
@@ -417,15 +573,50 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
 
     if (grounded && shouldLock(lockState.state)) {
       forceLock();
+      currentTick++;
       return;
     }
 
     notify();
+
+    // Replay end / verify.
+    if (replayMode && activeReplay) {
+      if (currentTick >= activeReplay.endedAtTick && state.status === 'playing') {
+        state.status = 'gameover';
+        notify();
+      }
+      if (
+        (state.status === 'gameover') &&
+        replayVerified === null
+      ) {
+        verifyReplay();
+      }
+    }
+
+    currentTick++;
+  };
+
+  const drawReplayBadge = (ctx: CanvasRenderingContext2D): void => {
+    ctx.save();
+    const w = 78;
+    const h = 20;
+    ctx.fillStyle = 'rgba(240,60,60,0.85)';
+    ctx.fillRect(8, 8, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(8, 8, w, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText('● REPLAY', 8 + w / 2, 8 + h / 2 + 1);
+    ctx.restore();
   };
 
   const render = (): void => {
     playMount.beginFrame('#0b0d10');
     renderPlayfield(playMount.ctx, state, cfg);
+    if (replayMode) drawReplayBadge(playMount.ctx);
     sideMount.beginFrame('#14171c');
     renderSidePanel(sideMount.ctx, state, cfg);
   };
@@ -489,6 +680,53 @@ export function createTetrisGame(host: HTMLElement, opts: TetrisOptions = {}): T
     },
     get muted(): boolean {
       return audio.muted;
+    },
+    exportReplay(): Replay | null {
+      if (finalReplay) return finalReplay;
+      if (state.status === 'gameover') {
+        finalReplay = recorder.finalize({
+          seed: effectiveSeed,
+          cfg,
+          endedAtTick: currentTick,
+          finalScore: state.score,
+        });
+        return finalReplay;
+      }
+      return null;
+    },
+    replayFrom(replay: Replay): void {
+      if (replay.game !== 'tetris') {
+        throw new Error(`tetris game got a ${replay.game} replay`);
+      }
+      const partial = tetrisConfigFromReplay(replay);
+      if (partial.cellPx !== undefined) (cfg as TetrisConfig).cellPx = partial.cellPx;
+      effectiveSeed = replay.seed >>> 0;
+      rng = mulberry32(effectiveSeed);
+      recorder.reset();
+      finalReplay = null;
+      replayMode = true;
+      activeReplay = replay;
+      replayCursor = createTetrisReplayCursor(replay);
+      replayVerified = null;
+      currentTick = 0;
+      prevSoftDropping = false;
+      bag = new SevenBag(rng);
+      state = createInitialState();
+      state.status = 'playing';
+      state.startedAtMs = performance.now();
+      lockState.state = createLockState();
+      dasOnKeyUp(dasLeft);
+      dasOnKeyUp(dasRight);
+      lastHorizontalKey = null;
+      wasDown.clear();
+      spawnFromBag(state, bag, cfg);
+      notify();
+    },
+    get isReplaying(): boolean {
+      return replayMode;
+    },
+    get replayVerified(): boolean | null {
+      return replayVerified;
     },
   };
 }

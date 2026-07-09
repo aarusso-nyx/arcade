@@ -10,13 +10,22 @@ import {
   type Loop,
   type Keyboard,
   type CanvasMount,
+  type Replay,
+  type SnakeAction,
 } from '../../../core';
 import { SNAKE_SFX } from './audio';
 import { DEFAULT_CONFIG, SnakeConfig, tickIntervalFor } from './config';
 import { DirectionQueue, KEY_TO_DIRECTION, PREVENT_DEFAULT_CODES } from './input';
 import { render } from './renderer';
+import {
+  createSnakeRecorder,
+  createSnakeReplayCursor,
+  snakeConfigFromReplay,
+  type SnakeReplayCursor,
+} from './replay';
 import { loadPixelFont } from './sprites';
 import { createInitialState, step } from './state';
+import type { Direction } from '../../../core';
 import type { SnakeState } from './types';
 
 export interface SnakeGame {
@@ -32,6 +41,21 @@ export interface SnakeGame {
   /** Toggle global mute. Returns the new muted state. */
   toggleMute(): boolean;
   readonly muted: boolean;
+  /**
+   * Snapshot of the current run as a shareable `Replay`. Returns null unless
+   * recording is enabled and the run has ended (game over or cleared).
+   */
+  exportReplay(): Replay | null;
+  /**
+   * Play back a recorded run in spectator mode. Live keyboard input is
+   * ignored (except global chrome, which is above this layer). The recorded
+   * inputs are dispatched at the same tick numbers they were recorded at.
+   */
+  replayFrom(replay: Replay): void;
+  /** True while a replay is being played back. */
+  readonly isReplaying: boolean;
+  /** Determinism-check result on replay completion. null while a replay is in progress. */
+  readonly replayVerified: boolean | null;
 }
 
 export interface SnakeOptions extends Partial<SnakeConfig> {
@@ -43,8 +67,9 @@ const STORAGE_NS = 'arcade.snake';
 
 export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): SnakeGame {
   const cfg: SnakeConfig = { ...DEFAULT_CONFIG, ...opts };
-  const seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
-  const rng = mulberry32(seed);
+  const seedFixed = opts.seed != null;
+  let seed = opts.seed ?? ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+  let rng = mulberry32(seed);
   const storage = createStorage(STORAGE_NS);
   const audio: Audio = createAudio();
   registerSounds(audio, SNAKE_SFX);
@@ -57,6 +82,47 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
 
   const queue = new DirectionQueue(2);
   let lastAlpha = 0;
+
+  // Replay recording + playback. The recorder is always fed on the "live"
+  // path — cheap enough to keep on unconditionally so any run is shareable.
+  const recorder = createSnakeRecorder();
+  let currentTick = 0;
+  let replayMode = false;
+  let replayCursor: SnakeReplayCursor | null = null;
+  let activeReplay: Replay | null = null;
+  let replayVerified: boolean | null = null;
+  let finalReplay: Replay | null = null;
+
+  const directionToAction = (d: Direction): SnakeAction => d as SnakeAction;
+
+  const applyReplayAction = (action: SnakeAction): void => {
+    switch (action) {
+      case 'up':
+      case 'down':
+      case 'left':
+      case 'right':
+        if (state.status === 'playing') queue.enqueue(action, state.direction);
+        break;
+      case 'pause':
+        if (state.status === 'playing') state.status = 'paused';
+        break;
+      case 'resume':
+        if (state.status === 'paused') state.status = 'playing';
+        break;
+    }
+  };
+
+  const finalizeReplayIfEnded = (): void => {
+    if (finalReplay || replayMode) return;
+    if (state.status === 'gameover' || state.status === 'cleared') {
+      finalReplay = recorder.finalize({
+        seed,
+        cfg,
+        endedAtTick: currentTick,
+        finalScore: state.score,
+      });
+    }
+  };
 
   const mount: CanvasMount = mountCanvas(host, {
     logicalWidth: cfg.cols * cfg.cellSize,
@@ -75,10 +141,20 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
         if (state.status === 'idle' || state.status === 'gameover' || state.status === 'cleared') {
           beginRun();
         }
-        if (state.status === 'playing') queue.enqueue(KEY_TO_DIRECTION[code], state.direction);
+        if (state.status === 'playing') {
+          const dir = KEY_TO_DIRECTION[code];
+          const accepted = queue.enqueue(dir, state.direction);
+          if (accepted) recorder.push(currentTick, directionToAction(dir));
+        }
       }
     }
-    if (keyboard.consumePress('Space')) togglePause();
+    if (keyboard.consumePress('Space')) {
+      const wasPlaying = state.status === 'playing';
+      const wasPaused = state.status === 'paused';
+      togglePause();
+      if (wasPlaying && state.status === 'paused') recorder.push(currentTick, 'pause');
+      else if (wasPaused && state.status === 'playing') recorder.push(currentTick, 'resume');
+    }
     if (keyboard.consumePress('Enter')) {
       if (state.status === 'idle' || state.status === 'gameover' || state.status === 'cleared') {
         beginRun();
@@ -105,6 +181,20 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
   };
 
   const beginRun = (): void => {
+    // Reseed for a fresh run so consecutive runs don't share entropy state.
+    // Recording captures the resulting seed with the run, and replay saves
+    // this seed verbatim so playback is deterministic. When opts.seed was
+    // explicitly supplied (tests/reproducibility), we honour it every run.
+    if (!replayMode) {
+      if (!seedFixed) {
+        seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+      }
+      rng = mulberry32(seed);
+      recorder.reset();
+      finalReplay = null;
+      replayVerified = null;
+    }
+    currentTick = 0;
     state = createInitialState(cfg, rng);
     state.status = 'playing';
     queue.clear();
@@ -123,8 +213,33 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
   };
 
   const tick = (): void => {
-    handleKeyEvents();
-    if (state.status !== 'playing') return;
+    if (replayMode && replayCursor && activeReplay) {
+      // Spectator mode: consume recorded actions for this tick, ignore live
+      // keys entirely.  Global chrome keys (Esc / M / help / arcade toggle)
+      // are handled by the Angular component above this layer, so it's safe
+      // to skip handleKeyEvents here.
+      for (const action of replayCursor.actionsAt(currentTick)) {
+        applyReplayAction(action);
+      }
+    } else {
+      handleKeyEvents();
+    }
+    if (state.status !== 'playing') {
+      // Even when paused/gameover, tick counter still advances so recorded
+      // resume events are dispatched at the correct offset. However the
+      // engine is idle, so we bail before step().
+      if (replayMode) {
+        const done =
+          state.status === 'gameover' ||
+          state.status === 'cleared' ||
+          currentTick >= activeReplay!.endedAtTick;
+        if (done && replayVerified === null && activeReplay) {
+          verifyReplay();
+        }
+        currentTick++;
+      }
+      return;
+    }
     const nextDir = queue.shift();
     const before = state.foodsEaten;
     const lengthBefore = state.body.length;
@@ -147,7 +262,43 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     if (state.foodsEaten !== before) {
       loop.setTickInterval(tickIntervalFor(state.foodsEaten, cfg));
     }
-    if (events.died || events.cleared) notify();
+    if (events.died || events.cleared) {
+      notify();
+      finalizeReplayIfEnded();
+    }
+
+    // Replay-playback stop condition: when we've reached the recorded end
+    // tick, force-terminate. The engine's own game-over path (wall/self)
+    // usually beats this by one tick, but the guard defends against a subtle
+    // divergence where the recorded run ends via bonus/food cleared state.
+    if (replayMode && activeReplay) {
+      if (
+        currentTick >= activeReplay.endedAtTick &&
+        state.status === 'playing'
+      ) {
+        state.status = 'gameover';
+        notify();
+      }
+      const st = state.status as string;
+      if ((st === 'gameover' || st === 'cleared') && replayVerified === null) {
+        verifyReplay();
+      }
+    }
+
+    currentTick++;
+  };
+
+  const verifyReplay = (): void => {
+    if (!activeReplay) return;
+    const ok = state.score === activeReplay.finalScore;
+    replayVerified = ok;
+    if (!ok) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[snake replay] determinism check failed: expected score ` +
+          `${activeReplay.finalScore}, got ${state.score}`,
+      );
+    }
   };
 
   const draw = (alpha = lastAlpha): void => {
@@ -157,6 +308,27 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     // fills the full canvas regardless of the host's actual size.
     mount.beginFrame('#0b0d10');
     render(mount.ctx, state, cfg, { highScore }, performance.now(), alpha);
+    if (replayMode) drawReplayBadge(mount.ctx);
+  };
+
+  const drawReplayBadge = (ctx: CanvasRenderingContext2D): void => {
+    // Kept intentionally isolated in game.ts (not renderer.ts) so the visual
+    // renderer stays a pure function of game state — the "REPLAY" indicator
+    // is orchestration metadata, not simulation state.
+    ctx.save();
+    const w = 78;
+    const h = 20;
+    ctx.fillStyle = 'rgba(240,60,60,0.85)';
+    ctx.fillRect(8, 8, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(8, 8, w, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText('● REPLAY', 8 + w / 2, 8 + h / 2 + 1);
+    ctx.restore();
   };
 
   const loop: Loop = createLoop({
@@ -201,6 +373,53 @@ export function createSnakeGame(host: HTMLElement, opts: SnakeOptions = {}): Sna
     },
     get muted(): boolean {
       return audio.muted;
+    },
+    exportReplay(): Replay | null {
+      // Prefer the finalized snapshot (captures the exact ending state).
+      // Fall back to an in-progress snapshot only if callers want it — the
+      // interface currently returns null for that case per the brief.
+      if (finalReplay) return finalReplay;
+      if (state.status === 'gameover' || state.status === 'cleared') {
+        finalReplay = recorder.finalize({
+          seed,
+          cfg,
+          endedAtTick: currentTick,
+          finalScore: state.score,
+        });
+        return finalReplay;
+      }
+      return null;
+    },
+    replayFrom(replay: Replay): void {
+      if (replay.game !== 'snake') {
+        throw new Error(`snake game got a ${replay.game} replay`);
+      }
+      // Apply the replay's config over top of current cfg so a wrap-mode
+      // recording plays back as wrap even if the host page didn't set it.
+      const partial = snakeConfigFromReplay(replay);
+      if (partial.cols !== undefined) (cfg as SnakeConfig).cols = partial.cols;
+      if (partial.rows !== undefined) (cfg as SnakeConfig).rows = partial.rows;
+      if (partial.mode !== undefined) (cfg as SnakeConfig).mode = partial.mode;
+      seed = replay.seed >>> 0;
+      rng = mulberry32(seed);
+      recorder.reset();
+      finalReplay = null;
+      replayMode = true;
+      activeReplay = replay;
+      replayCursor = createSnakeReplayCursor(replay);
+      replayVerified = null;
+      currentTick = 0;
+      state = createInitialState(cfg, rng);
+      state.status = 'playing';
+      queue.clear();
+      loop.setTickInterval(cfg.startTickMs);
+      notify();
+    },
+    get isReplaying(): boolean {
+      return replayMode;
+    },
+    get replayVerified(): boolean | null {
+      return replayVerified;
     },
   };
 }

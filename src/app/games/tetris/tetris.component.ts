@@ -10,6 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { decodeReplay } from '../../../core';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { tryNavigate } from '../../shared/arcade-shortcuts';
 import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
@@ -37,6 +38,16 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
         </div>
       </header>
       <div #host class="host"></div>
+      @if (replayNotice()) {
+        <p class="replay-notice" role="status">{{ replayNotice() }}</p>
+      }
+      @if (shareable() && !isReplaying()) {
+        <div class="share-row">
+          <button type="button" class="share-btn" (click)="shareReplay()">
+            {{ shareLabel() }}
+          </button>
+        </div>
+      }
       <p class="hint">
         Arrows move &middot; Z/X rotate &middot; A 180° &middot; Space hard drop &middot; Down soft drop
         &middot; Shift hold &middot; G ghost &middot; P pause &middot; Esc pause/quit &middot; M mute &middot; H help
@@ -182,6 +193,29 @@ import { createTetrisGame, type TetrisGame, type TetrisSnapshot } from './game';
     .host > div > div { border: 2px solid var(--nyx-brand); border-radius: 0.4rem; overflow: hidden; }
     .hint { color: var(--nyx-fg-dim); font-size: 0.78rem; margin: 0; text-align: center; line-height: 1.5; }
     .hint kbd { background: #2a2f38; border-radius: 0.2rem; padding: 0 0.3em; border: 1px solid #3a3f4b; font-family: inherit; }
+    .share-row { display: flex; gap: 0.5rem; align-items: center; justify-content: center; }
+    .share-btn {
+      background: var(--nyx-brand-deep);
+      color: var(--nyx-fg);
+      border: 1px solid var(--nyx-brand);
+      border-radius: 999px;
+      padding: 0.4rem 1rem;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 120ms, color 120ms;
+    }
+    .share-btn:hover { background: var(--nyx-brand); color: #fff; }
+    .replay-notice {
+      color: var(--nyx-brand-hi);
+      font-size: 0.85rem;
+      margin: 0;
+      text-align: center;
+      background: rgba(240,60,60,0.12);
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.4rem;
+      border: 1px solid rgba(240,60,60,0.3);
+    }
     :host { display: block; min-height: 100vh; background: var(--nyx-bg); }
 
     :host.arcade {
@@ -215,12 +249,18 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
   protected readonly helpOpen = signal(false);
   protected readonly creditsOpen = signal(false);
   protected readonly arcadeMode = signal(false);
+  protected readonly shareable = signal(false);
+  protected readonly isReplaying = signal(false);
+  protected readonly replayNotice = signal<string | null>(null);
+  protected readonly shareLabel = signal('Share replay');
 
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private pendingReplayParam: string | null = null;
 
   constructor() {
-    const route = inject(ActivatedRoute);
-    if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
+    if (this.route.snapshot.data['help'] === true) this.helpOpen.set(true);
+    this.pendingReplayParam = this.route.snapshot.queryParamMap.get('replay');
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -278,8 +318,51 @@ export class TetrisComponent implements AfterViewInit, OnDestroy {
       this.lines.set(snap.lines);
       this.level.set(snap.level);
       this.ghostEnabled.set(snap.ghostEnabled);
+      const g = this.game;
+      if (!g) return;
+      const ended = snap.status === 'gameover';
+      this.shareable.set(ended && !g.isReplaying);
+      if (ended && g.isReplaying && g.replayVerified === false) {
+        this.replayNotice.set(
+          'Replay finished, but the score did not match the recorded value. Determinism may be broken.',
+        );
+      }
     });
     this.game.start();
+
+    if (this.pendingReplayParam) {
+      try {
+        const replay = decodeReplay(this.pendingReplayParam);
+        if (replay.game !== 'tetris') {
+          throw new Error(`Wrong game in replay: ${replay.game}`);
+        }
+        this.isReplaying.set(true);
+        this.replayNotice.set('Playing back a shared replay in spectator mode.');
+        this.game.replayFrom(replay);
+      } catch (err) {
+        console.warn('[tetris] Failed to decode replay from URL:', err);
+        this.replayNotice.set('Could not load the shared replay — starting a fresh run.');
+      }
+    }
+  }
+
+  protected async shareReplay(): Promise<void> {
+    const g = this.game;
+    if (!g) return;
+    const replay = g.exportReplay();
+    if (!replay) return;
+    const { encodeReplay } = await import('../../../core');
+    const encoded = encodeReplay(replay);
+    const url = `${window.location.origin}/tetris?replay=${encoded}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.shareLabel.set('Copied!');
+    } catch (err) {
+      console.warn('[tetris] Clipboard write failed; showing URL fallback:', err);
+      window.prompt('Copy this replay URL:', url);
+      this.shareLabel.set('Copy URL');
+    }
+    setTimeout(() => this.shareLabel.set('Share replay'), 2000);
   }
 
   ngOnDestroy(): void {

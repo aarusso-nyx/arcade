@@ -10,6 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { decodeReplay } from '../../../core';
 import { HelpDialogComponent } from '../../shared/help-dialog/help-dialog.component';
 import { tryNavigate } from '../../shared/arcade-shortcuts';
 import { createSnakeGame, type SnakeGame } from './game';
@@ -33,6 +34,16 @@ import { createSnakeGame, type SnakeGame } from './game';
         </div>
       </header>
       <div #host class="host"></div>
+      @if (replayNotice()) {
+        <p class="replay-notice" role="status">{{ replayNotice() }}</p>
+      }
+      @if (shareable() && !isReplaying()) {
+        <div class="share-row">
+          <button type="button" class="share-btn" (click)="shareReplay()">
+            {{ shareLabel() }}
+          </button>
+        </div>
+      }
       <p class="hint">
         Arrows / WASD turn &middot; Space pause &middot; Enter start &middot;
         T wrap mode &middot; [ ] queue depth &middot; M mute &middot; H help &middot; C credits &middot;
@@ -153,6 +164,29 @@ import { createSnakeGame, type SnakeGame } from './game';
       box-shadow: 0 0 0 1px var(--nyx-brand-deep);
     }
     .hint { color: var(--nyx-fg-dim); font-size: 0.78rem; margin: 0; text-align: center; line-height: 1.5; }
+    .share-row { display: flex; gap: 0.5rem; align-items: center; }
+    .share-btn {
+      background: var(--nyx-brand-deep);
+      color: var(--nyx-fg);
+      border: 1px solid var(--nyx-brand);
+      border-radius: 999px;
+      padding: 0.4rem 1rem;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 120ms, color 120ms;
+    }
+    .share-btn:hover { background: var(--nyx-brand); color: #fff; }
+    .replay-notice {
+      color: var(--nyx-brand-hi);
+      font-size: 0.85rem;
+      margin: 0;
+      text-align: center;
+      background: rgba(240,60,60,0.12);
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.4rem;
+      border: 1px solid rgba(240,60,60,0.3);
+    }
     :host { display: block; min-height: 100vh; background: var(--nyx-bg); }
 
     /* Arcade / fullscreen mode: take over the viewport, hide chrome. */
@@ -188,12 +222,18 @@ export class SnakeComponent implements AfterViewInit, OnDestroy {
   protected readonly helpOpen = signal(false);
   protected readonly creditsOpen = signal(false);
   protected readonly arcadeMode = signal(false);
+  protected readonly shareable = signal(false);
+  protected readonly isReplaying = signal(false);
+  protected readonly replayNotice = signal<string | null>(null);
+  protected readonly shareLabel = signal('Share replay');
 
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private pendingReplayParam: string | null = null;
 
   constructor() {
-    const route = inject(ActivatedRoute);
-    if (route.snapshot.data['help'] === true) this.helpOpen.set(true);
+    if (this.route.snapshot.data['help'] === true) this.helpOpen.set(true);
+    this.pendingReplayParam = this.route.snapshot.queryParamMap.get('replay');
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -247,9 +287,60 @@ export class SnakeComponent implements AfterViewInit, OnDestroy {
     this.unsubscribe = this.game.onScoreChange((s, hs) => {
       this.score.set(s);
       this.highScore.set(hs);
-      this.length.set(this.game?.state.body.length ?? 0);
+      const g = this.game;
+      if (!g) return;
+      this.length.set(g.state.body.length);
+      // Share button only appears after the run ends (and only for
+      // organically-produced runs, not replays).
+      const ended = g.state.status === 'gameover' || g.state.status === 'cleared';
+      this.shareable.set(ended && !g.isReplaying);
+      // Determinism check: when a replay finishes, verify the recorded
+      // final score matches. Surface a non-fatal notice on mismatch.
+      if (ended && g.isReplaying && g.replayVerified === false) {
+        this.replayNotice.set(
+          'Replay finished, but the score did not match the recorded value. Determinism may be broken.',
+        );
+      }
     });
     this.game.start();
+
+    // Kick off a replay if the URL had ?replay=... . We wait until after
+    // start() so mountCanvas etc are wired.
+    if (this.pendingReplayParam) {
+      try {
+        const replay = decodeReplay(this.pendingReplayParam);
+        if (replay.game !== 'snake') {
+          throw new Error(`Wrong game in replay: ${replay.game}`);
+        }
+        this.isReplaying.set(true);
+        this.replayNotice.set('Playing back a shared replay in spectator mode.');
+        this.game.replayFrom(replay);
+      } catch (err) {
+        console.warn('[snake] Failed to decode replay from URL:', err);
+        this.replayNotice.set('Could not load the shared replay — starting a fresh run.');
+      }
+    }
+  }
+
+  protected async shareReplay(): Promise<void> {
+    const g = this.game;
+    if (!g) return;
+    const replay = g.exportReplay();
+    if (!replay) return;
+    // Lazy import to avoid pulling the codec into paths that don't need it.
+    const { encodeReplay } = await import('../../../core');
+    const encoded = encodeReplay(replay);
+    const url = `${window.location.origin}/snake?replay=${encoded}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.shareLabel.set('Copied!');
+    } catch (err) {
+      console.warn('[snake] Clipboard write failed; showing URL fallback:', err);
+      // As a fallback, prompt so the user can copy manually.
+      window.prompt('Copy this replay URL:', url);
+      this.shareLabel.set('Copy URL');
+    }
+    setTimeout(() => this.shareLabel.set('Share replay'), 2000);
   }
 
   ngOnDestroy(): void {

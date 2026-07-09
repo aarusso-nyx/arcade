@@ -5,3 +5,4 @@ export * from './input';
 export * from './render';
 export * from './state';
 export * from './audio';
+export * from './replay';

@@ -1,5 +1,12 @@
 import { Routes } from '@angular/router';
 
+// Route notes:
+// - `?replay=<encoded>` on `/snake` and `/tetris` triggers spectator-mode
+//   playback of a shared replay. The component reads the param via
+//   `ActivatedRoute.snapshot.queryParamMap` — Angular exposes query params
+//   on every route without extra config, so no route entry is needed here.
+//   See src/core/replay/replay.ts for the codec.
+
 const pacman = () => import('./games/pacman/pacman.component').then((m) => m.PacmanComponent);
 const tetris = () => import('./games/tetris/tetris.component').then((m) => m.TetrisComponent);
 const snake = () => import('./games/snake/snake.component').then((m) => m.SnakeComponent);
